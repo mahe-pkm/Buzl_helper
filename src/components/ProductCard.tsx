@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Copy, ExternalLink, Check, CheckCircle2, Circle, MessageSquare } from 'lucide-react';
 import { useCsvStore } from '../store/useCsvStore';
+import { fetchWithAuth } from '../utils/api';
 import type { Product } from '../types';
 import { toast } from 'sonner';
 
@@ -10,8 +11,14 @@ interface ProductCardProps {
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product, style }) => {
-  const { updateProduct, globalReferenceUrl } = useCsvStore();
+  const { updateProduct, globalReferenceUrl, connectionMode } = useCsvStore();
   const [showNotes, setShowNotes] = useState(false);
+  const [localNotes, setLocalNotes] = useState(product.notes || '');
+  const [savingNote, setSavingNote] = useState(false);
+
+  useEffect(() => {
+    setLocalNotes(product.notes || '');
+  }, [product.notes]);
 
   const finalReferenceUrl = product.reference_link || globalReferenceUrl;
 
@@ -34,13 +41,52 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, style }) => {
     if (type === 'Reference') updateProduct(product.id, { referenceOpened: true });
   };
 
+  const handleToggleComplete = async () => {
+    const nextCompleted = !product.completed;
+    const nextStatus = nextCompleted ? 'completed' : 'pending';
+
+    // Optimistically update
+    updateProduct(product.id, { completed: nextCompleted });
+
+    if (connectionMode === 'server') {
+      try {
+        await fetchWithAuth(`/products/${product.id}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: nextStatus }),
+        });
+      } catch (err: any) {
+        // Rollback on error
+        updateProduct(product.id, { completed: !nextCompleted });
+        toast.error('Failed to sync status with server');
+      }
+    }
+  };
+
+  const handleSaveNotes = async (text: string) => {
+    updateProduct(product.id, { notes: text });
+
+    if (connectionMode === 'server') {
+      setSavingNote(true);
+      try {
+        await fetchWithAuth(`/products/${product.id}/notes`, {
+          method: 'PATCH',
+          body: JSON.stringify({ notes: text }),
+        });
+      } catch (err: any) {
+        toast.error('Failed to save notes to server');
+      } finally {
+        setSavingNote(false);
+      }
+    }
+  };
+
   return (
     <div style={style} className="px-4 py-2">
       <div className={`border rounded-xl p-4 transition-all ${product.completed ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300'}`}>
         
         <div className="flex gap-3">
           <button 
-            onClick={() => updateProduct(product.id, { completed: !product.completed })}
+            onClick={handleToggleComplete}
             className="mt-0.5 flex-shrink-0 text-gray-300 hover:text-green-500 transition-colors focus:outline-none"
           >
             {product.completed ? <CheckCircle2 className="text-green-500" size={24} /> : <Circle size={24} />}
@@ -121,9 +167,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, style }) => {
 
             {showNotes && (
               <textarea
-                value={product.notes}
-                onChange={(e) => updateProduct(product.id, { notes: e.target.value })}
+                value={localNotes}
+                onChange={(e) => setLocalNotes(e.target.value)}
+                onBlur={(e) => handleSaveNotes(e.target.value)}
                 placeholder="Type notes here... (auto-saves)"
+                disabled={savingNote}
                 className="mt-2 w-full text-xs p-2.5 border border-amber-200 bg-amber-50 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-400 resize-none h-16 text-amber-900 placeholder-amber-700/50"
               />
             )}

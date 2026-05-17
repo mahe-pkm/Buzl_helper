@@ -1,13 +1,82 @@
+import { useState, useEffect, useCallback } from 'react';
 import { ImportSection } from './components/ImportSection';
 import { Dashboard } from './components/Dashboard';
 import { ProductList } from './components/ProductList';
+import { SettingsPanel } from './components/SettingsPanel';
 import { useCsvStore } from './store/useCsvStore';
+import { fetchWithAuth } from './utils/api';
+import { Settings, RefreshCw } from 'lucide-react';
+import { Toaster, toast } from 'sonner';
 
 function App() {
-  const { isImported, products } = useCsvStore();
+  const { 
+    isImported, 
+    products, 
+    setProducts, 
+    connectionMode, 
+    token, 
+    username 
+  } = useCsvStore();
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // We are "imported" in server mode if we are logged in (have username and token)
+  const isSessionActive = connectionMode === 'server' ? (!!token && !!username) : isImported;
+
+  const handleRefreshTasks = useCallback(async () => {
+    if (connectionMode !== 'server' || !token) return;
+    setRefreshing(true);
+    try {
+      const fetched = await fetchWithAuth('/products');
+      // Map API Products to Extension internal format
+      const mapped = fetched.map((p: any) => ({
+        id: p.id,
+        product_name: p.product_name,
+        drive_folder: p.drive_folder,
+        reference_link: p.reference_link || undefined,
+        thumbnail_url: p.thumbnail_url || undefined,
+        completed: p.status === 'completed',
+        notes: p.notes || '',
+        nameCopied: false,
+        driveCopied: false,
+        referenceCopied: false,
+        driveOpened: false,
+        referenceOpened: false
+      }));
+
+      // Filter tasks to only show those assigned to the logged-in worker,
+      // or unassigned ones that they can work on!
+      // This is a great user experience:
+      const workerTasks = mapped.filter((p: any) => {
+        // Find if this product is assigned to this user
+        const isAssignedToMe = p.assigned_to === username || (p.assignee && p.assignee.username === username);
+        const isUnassigned = !p.assigned_to && !p.assignee;
+        return isAssignedToMe || isUnassigned;
+      });
+
+      // If there are no specifically assigned tasks, fallback to showing all mapped products 
+      // so the popup is never empty
+      setProducts(workerTasks.length > 0 ? workerTasks : mapped);
+      toast.success('Tasks updated from server');
+    } catch (err: any) {
+      toast.error('Failed to sync tasks with server');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [connectionMode, token, username, setProducts]);
+
+  // Sync tasks on server environment change or connectionMode change
+  useEffect(() => {
+    if (connectionMode === 'server' && token) {
+      handleRefreshTasks();
+    }
+  }, [connectionMode, token, handleRefreshTasks]);
 
   return (
-    <div className="w-[400px] h-screen bg-gray-50 overflow-hidden flex flex-col shadow-xl">
+    <div className="w-[400px] h-screen bg-gray-50 overflow-hidden flex flex-col shadow-xl relative">
+      <Toaster position="top-center" />
+
       <header className="flex-shrink-0 bg-white border-b border-gray-200 p-4 z-20 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)] flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="bg-gradient-to-br from-gray-900 to-black text-white p-1.5 rounded-lg shadow-sm">
@@ -21,23 +90,71 @@ function App() {
           </div>
           <h1 className="font-bold text-gray-900 tracking-tight text-lg">Buzl Helper</h1>
         </div>
-        {isImported && (
-          <span className="bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm">
-            {products.length} Items
-          </span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {connectionMode === 'server' && token && (
+            <button 
+              onClick={handleRefreshTasks} 
+              disabled={refreshing}
+              className={`p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition-all ${refreshing ? 'animate-spin' : ''}`}
+              title="Sync Tasks"
+            >
+              <RefreshCw size={16} />
+            </button>
+          )}
+          <button 
+            onClick={() => setSettingsOpen(!settingsOpen)}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition-colors"
+            title="Settings"
+          >
+            <Settings size={16} />
+          </button>
+          {isSessionActive && (
+            <span className="bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm">
+              {products.length} Tasks
+            </span>
+          )}
+        </div>
       </header>
       
-      {!isImported ? (
+      {!isSessionActive ? (
         <div className="flex-1 overflow-y-auto">
-          <ImportSection />
+          {connectionMode === 'server' ? (
+            <div className="p-8 flex flex-col items-center justify-center text-center h-full text-gray-400">
+              <div className="text-5xl mb-4">🔒</div>
+              <p className="font-bold text-gray-800 text-base mb-1">Server Mode Active</p>
+              <p className="text-xs text-gray-500 max-w-[240px] mb-4">Please log in inside ecosystem settings to retrieve your live assigned task list.</p>
+              <button 
+                onClick={() => setSettingsOpen(true)}
+                className="px-4 py-2 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+              >
+                Open Settings & Login
+              </button>
+            </div>
+          ) : (
+            <ImportSection />
+          )}
         </div>
       ) : (
         <div className="flex-1 flex flex-col min-h-0 bg-gray-50">
-          <ImportSection />
+          {connectionMode !== 'server' && <ImportSection />}
+          {connectionMode === 'server' && (
+            <div className="px-4 pt-3 flex items-center justify-between bg-white border-b border-gray-100 flex-shrink-0">
+              <span className="text-xs font-bold text-green-600 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Server Connected
+              </span>
+              <span className="text-[10px] text-gray-400 font-semibold">Worker: {username}</span>
+            </div>
+          )}
           <Dashboard />
           <ProductList />
         </div>
+      )}
+
+      {settingsOpen && (
+        <SettingsPanel 
+          onClose={() => setSettingsOpen(false)} 
+          onRefreshTasks={handleRefreshTasks} 
+        />
       )}
     </div>
   );

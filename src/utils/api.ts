@@ -2,13 +2,24 @@ import { useCsvStore } from '../store/useCsvStore';
 
 export function getBaseUrl(): string {
   const state = useCsvStore.getState();
+  let url = '';
   if (state.serverEnvironment === 'development') {
-    return state.vercelUrl;
+    url = state.vercelUrl;
   } else if (state.serverEnvironment === 'production') {
-    return state.hostingerUrl;
+    url = state.hostingerUrl;
   } else {
-    return state.customUrl;
+    url = state.customUrl;
   }
+
+  // Clean trailing slashes and whitespace
+  url = url.trim().replace(/\/+$/, '');
+
+  // Proactively append /api if the user omitted it
+  if (url && !url.endsWith('/api')) {
+    url = `${url}/api`;
+  }
+
+  return url;
 }
 
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {

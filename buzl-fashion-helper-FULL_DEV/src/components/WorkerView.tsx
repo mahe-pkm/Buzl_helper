@@ -1,0 +1,348 @@
+import React, { useMemo, useState } from 'react';
+import { LogOut, ExternalLink, Copy, CheckCircle2, Clock, Circle, Search, RefreshCw, MessageSquare, X, Check, Package, User, Download } from 'lucide-react';
+import { toast } from 'sonner';
+import { useCsvStore } from '../store/useCsvStore';
+import { fetchWithAuth } from '../utils/api';
+import type { Product } from '../types';
+
+type WorkerTab = 'mine' | 'all';
+
+export const WorkerView: React.FC = () => {
+  const { authUser, logout, products, setProducts, searchQuery, setSearchQuery } = useCsvStore();
+  const [activeTab, setActiveTab] = useState<WorkerTab>('mine');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      const data = await fetchWithAuth('/products');
+      setProducts(data);
+    } catch { toast.error('Failed to refresh'); }
+    finally { setRefreshing(false); }
+  };
+
+  // Partition products
+  const myProducts = useMemo(() => products.filter(p => p.assigned_to === authUser?.id), [products, authUser]);
+  const unassignedProducts = useMemo(() => products.filter(p => !p.assigned_to), [products]);
+  const allProducts = products;
+
+  // Stats for header
+  const stats = useMemo(() => ({
+    total: myProducts.length,
+    done: myProducts.filter(p => p.status === 'completed').length,
+    inProgress: myProducts.filter(p => p.status === 'in-progress').length,
+    pending: myProducts.filter(p => p.status === 'pending').length,
+    pct: myProducts.length > 0 ? Math.round((myProducts.filter(p => p.status === 'completed').length / myProducts.length) * 100) : 0,
+  }), [myProducts]);
+
+  // Overall progress for "All" tab
+  const globalStats = useMemo(() => ({
+    total: allProducts.length,
+    done: allProducts.filter(p => p.status === 'completed').length,
+    inProgress: allProducts.filter(p => p.status === 'in-progress').length,
+    unassigned: unassignedProducts.length,
+    pct: allProducts.length > 0 ? Math.round((allProducts.filter(p => p.status === 'completed').length / allProducts.length) * 100) : 0,
+  }), [allProducts, unassignedProducts]);
+
+  // "Mine" tab filtered list (my tasks + unassigned)
+  const mineFiltered = useMemo(() => {
+    const base = [...myProducts, ...unassignedProducts];
+    return base.filter(p => {
+      if (filterStatus !== 'all' && p.status !== filterStatus) return false;
+      if (searchQuery) return p.product_name.toLowerCase().includes(searchQuery.toLowerCase());
+      return true;
+    });
+  }, [myProducts, unassignedProducts, filterStatus, searchQuery]);
+
+  // "All" tab filtered
+  const allFiltered = useMemo(() => {
+    return allProducts.filter(p => {
+      if (filterStatus !== 'all' && p.status !== filterStatus) return false;
+      if (searchQuery) return p.product_name.toLowerCase().includes(searchQuery.toLowerCase());
+      return true;
+    });
+  }, [allProducts, filterStatus, searchQuery]);
+
+  const handleSetStatus = async (product: Product, status: string) => {
+    const prev = product.status;
+    setUpdatingId(product.id);
+    setProducts(products.map(p => p.id === product.id ? { ...p, status } : p));
+    try {
+      await fetchWithAuth(`/products/${product.id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+    } catch {
+      setProducts(products.map(p => p.id === product.id ? { ...p, status: prev } : p));
+      toast.error('Update failed');
+    } finally { setUpdatingId(null); }
+  };
+
+  const handleSaveNote = async (productId: string) => {
+    try {
+      await fetchWithAuth(`/products/${productId}/notes`, { method: 'PATCH', body: JSON.stringify({ notes: noteText }) });
+      setProducts(products.map(p => p.id === productId ? { ...p, notes: noteText } : p));
+      setEditingNoteId(null);
+      toast.success('Note saved');
+    } catch { toast.error('Note save failed'); }
+  };
+
+  const handleClaim = async (product: Product) => {
+    setClaimingId(product.id);
+    try {
+      await fetchWithAuth(`/products/${product.id}/assign`, { method: 'PATCH', body: JSON.stringify({ assigned_to: authUser?.id }) });
+      setProducts(products.map(p => p.id === product.id ? { ...p, assigned_to: authUser?.id, assignee: { id: authUser?.id, username: authUser?.username } } : p));
+      toast.success(`"${product.product_name}" claimed!`);
+    } catch { toast.error('Claim failed'); }
+    finally { setClaimingId(null); }
+  };
+
+  const statusIcon = (p: Product) => {
+    if (p.status === 'completed') return <CheckCircle2 className="text-green-500" size={20} />;
+    if (p.status === 'in-progress') return <Clock className="text-blue-400" size={20} />;
+    return <Circle className="text-gray-300" size={20} />;
+  };
+
+  const statusBadge = (status: string) => {
+    const cfg: Record<string, string> = {
+      completed: 'bg-green-100 text-green-700',
+      'in-progress': 'bg-blue-100 text-blue-600',
+      pending: 'bg-gray-100 text-gray-400',
+    };
+    return <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${cfg[status] || cfg.pending}`}>{status}</span>;
+  };
+
+  const TaskCard = ({ product, isOwn }: { product: Product; isOwn: boolean }) => (
+    <div className={`bg-white px-3 py-3 border-b border-gray-100 ${product.status === 'completed' ? 'opacity-60' : ''}`}>
+      <div className="flex gap-2.5">
+        {/* Status icon — only clickable for own tasks */}
+        {isOwn ? (
+          <button disabled={updatingId === product.id} onClick={() => {
+            const next = product.status === 'pending' ? 'in-progress' : product.status === 'in-progress' ? 'completed' : 'pending';
+            handleSetStatus(product, next);
+          }} className="mt-0.5 flex-shrink-0 disabled:opacity-50" title={`Status: ${product.status}`}>
+            {statusIcon(product)}
+          </button>
+        ) : (
+          <div className="mt-0.5 flex-shrink-0">{statusIcon(product)}</div>
+        )}
+        
+        {product.thumbnail_url && (
+          <img src={product.thumbnail_url} alt="Preview" className="w-10 h-10 mt-1 rounded-md object-cover border border-gray-200 flex-shrink-0" />
+        )}
+
+        <div className="flex-1 min-w-0">
+          {/* Title row */}
+          <div className="flex items-start justify-between gap-1">
+            <h3 className={`font-semibold text-[13px] leading-tight ${product.status === 'completed' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+              {product.product_name}
+            </h3>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {statusBadge(product.status)}
+              <button onClick={() => { navigator.clipboard.writeText(product.product_name); toast.success('Copied!'); }} className="text-gray-400 hover:text-gray-600 p-0.5">
+                <Copy size={11} />
+              </button>
+            </div>
+          </div>
+
+          {/* Assignee (for unassigned/all view) */}
+          {!isOwn && (
+            <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
+              <User size={9} />
+              {product.assignee ? product.assignee.username : <span className="text-amber-500 font-semibold">Unassigned</span>}
+            </p>
+          )}
+
+          {/* Drive Folder */}
+          {product.drive_folder && (
+            <div className="mt-1.5 flex items-center justify-between text-xs bg-blue-50 px-2 py-1.5 rounded-lg border border-blue-100">
+              <span className="font-medium text-blue-800 text-[11px] truncate pr-2 max-w-[160px]" title={product.drive_folder}>Drive Folder</span>
+              <div className="flex gap-1 flex-shrink-0">
+                <button onClick={() => window.open(product.drive_folder, '_blank')} className="p-1 rounded text-blue-600 hover:bg-blue-100"><ExternalLink size={12} /></button>
+                <button onClick={() => { navigator.clipboard.writeText(product.drive_folder); toast.success('Copied!'); }} className="p-1 rounded text-blue-600 hover:bg-blue-100"><Copy size={12} /></button>
+              </div>
+            </div>
+          )}
+
+          {/* Reference Link */}
+          {product.reference_link && (
+            <div className="mt-1 flex items-center justify-between text-xs bg-purple-50 px-2 py-1.5 rounded-lg border border-purple-100">
+              <span className="font-medium text-purple-800 text-[11px] truncate pr-2 max-w-[160px]" title={product.reference_link}>Reference Link</span>
+              <div className="flex gap-1 flex-shrink-0">
+                <button onClick={() => window.open(product.reference_link!, '_blank')} className="p-1 rounded text-purple-600 hover:bg-purple-100"><ExternalLink size={12} /></button>
+                <button onClick={() => { navigator.clipboard.writeText(product.reference_link!); toast.success('Copied!'); }} className="p-1 rounded text-purple-600 hover:bg-purple-100"><Copy size={12} /></button>
+              </div>
+            </div>
+          )}
+
+          {/* Claim button for unassigned */}
+          {!product.assigned_to && (
+            <button onClick={() => handleClaim(product)} disabled={claimingId === product.id}
+              className="mt-1.5 w-full text-[11px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg py-1 transition-colors disabled:opacity-50">
+              {claimingId === product.id ? 'Claiming...' : '+ Claim this task'}
+            </button>
+          )}
+
+          {/* Notes (own tasks only) */}
+          {isOwn && (
+            editingNoteId === product.id ? (
+              <div className="mt-1.5 flex gap-1">
+                <input autoFocus value={noteText} onChange={e => setNoteText(e.target.value)}
+                  placeholder="Add a note..." onKeyDown={e => e.key === 'Enter' && handleSaveNote(product.id)}
+                  className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                <button onClick={() => handleSaveNote(product.id)} className="p-1.5 text-green-600 hover:bg-green-50 rounded"><Check size={13} /></button>
+                <button onClick={() => setEditingNoteId(null)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"><X size={13} /></button>
+              </div>
+            ) : (
+              <button onClick={() => { setEditingNoteId(product.id); setNoteText(product.notes || ''); }}
+                className="mt-1.5 flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600">
+                <MessageSquare size={10} />
+                {product.notes ? <span className="truncate max-w-[220px] italic">{product.notes}</span> : 'Add note'}
+              </button>
+            )
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const filtered = activeTab === 'mine' ? mineFiltered : allFiltered;
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <header className="flex-shrink-0 bg-gray-900 text-white px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="bg-white/10 p-1.5 rounded-lg"><Package size={14} /></div>
+          <span className="font-bold text-sm">Buzl Helper</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <a href="/buzl-fashion-helper.zip" download className="text-white/70 hover:text-white p-1 mr-1" title="Download Chrome Extension">
+            <Download size={13} />
+          </a>
+          <button onClick={refresh} disabled={refreshing} className="text-white/70 hover:text-white p-1">
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <span className="text-xs text-white/60 bg-white/10 px-2 py-1 rounded">{authUser?.username}</span>
+          <button onClick={logout} className="text-white/70 hover:text-red-400 p-1"><LogOut size={13} /></button>
+        </div>
+      </header>
+
+      {/* Progress bar — shows based on active tab */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3">
+        {activeTab === 'mine' ? (
+          <>
+            <div className="flex justify-between items-end mb-1.5">
+              <div>
+                <span className="text-2xl font-bold text-gray-900 leading-none">{stats.pct}%</span>
+                <span className="text-xs text-gray-400 ml-1.5">my progress</span>
+              </div>
+              <div className="flex gap-3 text-right">
+                <div><p className="text-base font-bold text-green-600">{stats.done}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Done</p></div>
+                <div><p className="text-base font-bold text-blue-500">{stats.inProgress}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Doing</p></div>
+                <div><p className="text-base font-bold text-gray-500">{stats.pending}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Left</p></div>
+                <div><p className="text-base font-bold text-gray-700">{stats.total}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Mine</p></div>
+              </div>
+            </div>
+            <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+              <div className="bg-green-500 h-full rounded-full transition-all duration-700" style={{ width: `${stats.pct}%` }} />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex justify-between items-end mb-1.5">
+              <div>
+                <span className="text-2xl font-bold text-gray-900 leading-none">{globalStats.pct}%</span>
+                <span className="text-xs text-gray-400 ml-1.5">overall done</span>
+              </div>
+              <div className="flex gap-3 text-right">
+                <div><p className="text-base font-bold text-green-600">{globalStats.done}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Done</p></div>
+                <div><p className="text-base font-bold text-blue-500">{globalStats.inProgress}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Doing</p></div>
+                <div><p className="text-base font-bold text-amber-500">{globalStats.unassigned}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Free</p></div>
+                <div><p className="text-base font-bold text-gray-700">{globalStats.total}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Total</p></div>
+              </div>
+            </div>
+            <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+              <div className="bg-green-500 h-full rounded-full transition-all duration-700" style={{ width: `${globalStats.pct}%` }} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 flex">
+        <button onClick={() => setActiveTab('mine')}
+          className={`flex-1 py-2 text-xs font-bold transition-colors ${activeTab === 'mine' ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
+          My Tasks {myProducts.length > 0 && <span className="ml-1 bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded text-[10px]">{myProducts.length}</span>}
+          {unassignedProducts.length > 0 && <span className="ml-1 bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded text-[10px]">{unassignedProducts.length} free</span>}
+        </button>
+        <button onClick={() => setActiveTab('all')}
+          className={`flex-1 py-2 text-xs font-bold transition-colors ${activeTab === 'all' ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
+          All Products <span className="ml-1 bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded text-[10px]">{allProducts.length}</span>
+        </button>
+      </div>
+
+      {/* Search & Status Filter */}
+      <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200 px-3 py-2 flex flex-col gap-2">
+        <div className="relative">
+          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" placeholder="Search products..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+        </div>
+        <div className="flex gap-1">
+          {(['all', 'pending', 'in-progress', 'completed'] as const).map(f => (
+            <button key={f} onClick={() => setFilterStatus(f)}
+              className={`px-2 py-1 rounded text-[10px] font-semibold capitalize transition-colors ${filterStatus === f ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Task List */}
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === 'mine' && filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center p-8 text-gray-400">
+            <div className="text-4xl mb-3">📭</div>
+            <p className="font-semibold text-gray-600 text-sm">No tasks yet</p>
+            <p className="text-xs mt-1">Check "All Products" tab to claim unassigned tasks</p>
+          </div>
+        ) : activeTab === 'all' && filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center p-8 text-gray-400">
+            <div className="text-4xl mb-3">🔍</div>
+            <p className="font-semibold text-gray-600 text-sm">No matching products</p>
+          </div>
+        ) : (
+          <div>
+            {activeTab === 'mine' && (
+              <>
+                {myProducts.length > 0 && (
+                  <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">My Assigned Tasks ({myProducts.length})</p>
+                  </div>
+                )}
+                {mineFiltered.filter(p => p.assigned_to === authUser?.id).map(p => (
+                  <TaskCard key={p.id} product={p} isOwn={true} />
+                ))}
+                {unassignedProducts.filter(p => filterStatus === 'all' || p.status === filterStatus).length > 0 && (
+                  <div className="px-3 py-1.5 bg-amber-50 border-y border-amber-100">
+                    <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide">Unassigned — Available to Claim ({unassignedProducts.length})</p>
+                  </div>
+                )}
+                {unassignedProducts
+                  .filter(p => filterStatus === 'all' || p.status === filterStatus)
+                  .filter(p => !searchQuery || p.product_name.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map(p => <TaskCard key={p.id} product={p} isOwn={false} />)}
+              </>
+            )}
+            {activeTab === 'all' && filtered.map(p => (
+              <TaskCard key={p.id} product={p} isOwn={p.assigned_to === authUser?.id} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

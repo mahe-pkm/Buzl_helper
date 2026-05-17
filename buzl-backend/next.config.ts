@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 
+// Build-time fallback for Prisma client initialization
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = "mysql://dummy:dummy@localhost:3306/dummy";
+}
+
 const nextConfig: NextConfig = {
   async headers() {
     return [

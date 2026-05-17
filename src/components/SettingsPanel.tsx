@@ -31,19 +31,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
   const [inputPassword, setInputPassword] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
 
+  const requiresPassword = inputUsername.trim().toLowerCase() === 'admin';
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputUsername || !inputPassword) return;
+    if (!inputUsername) return;
+    if (requiresPassword && !inputPassword) {
+      toast.error('Password is required for admin role.');
+      return;
+    }
 
     setLoggingIn(true);
     try {
       const data = await fetchWithAuth('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ username: inputUsername, password: inputPassword }),
+        body: JSON.stringify({ username: inputUsername, password: inputPassword || '' }),
       });
 
       setCredentials(data.user.username, data.token);
-      toast.success('Successfully logged into server!');
+      toast.success(`Successfully logged in as ${data.user.username}!`);
       
       // Pull tasks immediately upon login
       if (onRefreshTasks) {
@@ -200,37 +206,39 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
                 ) : (
                   <form onSubmit={handleLogin} className="flex flex-col gap-3">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
-                      <Shield size={13} /> Authentication Required
+                      <Shield size={13} /> Connection Settings
                     </div>
                     <div>
-                      <span className="text-[10px] font-semibold text-gray-400 mb-1 block">Username</span>
+                      <span className="text-[10px] font-semibold text-gray-400 mb-1 block">Your Name / Username</span>
                       <input
                         type="text"
-                        placeholder="e.g. worker_1"
+                        placeholder="e.g. Rahul"
                         value={inputUsername}
                         onChange={(e) => setInputUsername(e.target.value)}
                         required
                         className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                       />
                     </div>
-                    <div>
-                      <span className="text-[10px] font-semibold text-gray-400 mb-1 block">Password</span>
-                      <input
-                        type="password"
-                        placeholder="••••••••"
-                        value={inputPassword}
-                        onChange={(e) => setInputPassword(e.target.value)}
-                        required
-                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      />
-                    </div>
+                    {requiresPassword && (
+                      <div className="animate-in slide-in-from-top-1 duration-200">
+                        <span className="text-[10px] font-semibold text-gray-400 mb-1 block">Admin Password</span>
+                        <input
+                          type="password"
+                          placeholder="••••••••"
+                          value={inputPassword}
+                          onChange={(e) => setInputPassword(e.target.value)}
+                          required
+                          className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                        />
+                      </div>
+                    )}
                     <button
                       type="submit"
                       disabled={loggingIn}
                       className="w-full mt-2 py-2.5 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
                     >
                       <KeyRound size={13} />
-                      {loggingIn ? 'Connecting...' : 'Login to Server'}
+                      {loggingIn ? 'Connecting...' : requiresPassword ? 'Login as Admin' : 'Connect as Worker'}
                     </button>
                   </form>
                 )}

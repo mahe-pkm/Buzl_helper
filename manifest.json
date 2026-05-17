@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Buzl Fashion Helper",
+  "version": "1.0.0",
+  "description": "Chrome Side Panel Extension designed for high-speed fashion product workflows.",
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "tabs",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://docs.google.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.ts",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "action": {
+    "default_title": "Open Buzl Fashion Helper"
+  }
+}

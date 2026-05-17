@@ -10,7 +10,8 @@
     "clipboardWrite"
   ],
   "host_permissions": [
-    "https://docs.google.com/*"
+    "https://docs.google.com/*",
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "src/background.ts",

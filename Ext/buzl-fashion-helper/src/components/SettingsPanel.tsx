@@ -48,7 +48,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
         body: JSON.stringify({ username: inputUsername, password: inputPassword || '' }),
       });
 
-      setCredentials(data.user.username, data.token);
+      setCredentials(data.user.username, data.token, data.user.id);
       toast.success(`Successfully logged in as ${data.user.username}!`);
       
       // Pull tasks immediately upon login
@@ -66,7 +66,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
   };
 
   const handleLogout = () => {
-    setCredentials(null, null);
+    setCredentials(null, null, null);
     setProducts([]);
     toast.success('Logged out of server');
   };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Copy, ExternalLink, Check, CheckCircle2, Circle, MessageSquare } from 'lucide-react';
+import { Copy, ExternalLink, Check, CheckCircle2, Circle, Clock, MessageSquare, UserMinus } from 'lucide-react';
 import { useCsvStore } from '../store/useCsvStore';
 import { fetchWithAuth } from '../utils/api';
 import type { Product } from '../types';
@@ -11,16 +11,19 @@ interface ProductCardProps {
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product, style }) => {
-  const { updateProduct, globalReferenceUrl, connectionMode } = useCsvStore();
+  const { updateProduct, products, setProducts, globalReferenceUrl, connectionMode, userId, username } = useCsvStore();
   const [showNotes, setShowNotes] = useState(false);
   const [localNotes, setLocalNotes] = useState(product.notes || '');
   const [savingNote, setSavingNote] = useState(false);
+  const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
     setLocalNotes(product.notes || '');
   }, [product.notes]);
 
   const finalReferenceUrl = product.reference_link || globalReferenceUrl;
+  const isMine = product.assigned_to === userId;
+  const isUnassigned = !product.assigned_to;
 
   const copyToClipboard = async (text: string, type: string) => {
     try {
@@ -42,11 +45,16 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, style }) => {
   };
 
   const handleToggleComplete = async () => {
-    const nextCompleted = !product.completed;
-    const nextStatus = nextCompleted ? 'completed' : 'pending';
+    if (connectionMode === 'server' && !isMine) {
+      toast.error('Claim this task before changing status');
+      return;
+    }
+
+    const nextStatus = product.status === 'pending' ? 'in-progress' : product.status === 'in-progress' ? 'completed' : 'pending';
+    const nextCompleted = nextStatus === 'completed';
 
     // Optimistically update
-    updateProduct(product.id, { completed: nextCompleted });
+    updateProduct(product.id, { completed: nextCompleted, status: nextStatus });
 
     if (connectionMode === 'server') {
       try {
@@ -56,9 +64,52 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, style }) => {
         });
       } catch (err: any) {
         // Rollback on error
-        updateProduct(product.id, { completed: !nextCompleted });
+        updateProduct(product.id, { completed: !nextCompleted, status: product.status });
         toast.error('Failed to sync status with server');
       }
+    }
+  };
+
+  const handleClaimTask = async () => {
+    if (!userId) {
+      toast.error('Login again before claiming tasks');
+      return;
+    }
+
+    setAssigning(true);
+    try {
+      const updated = await fetchWithAuth(`/products/${product.id}/assign`, {
+        method: 'PATCH',
+        body: JSON.stringify({ assigned_to: userId }),
+      });
+      setProducts(products.map((p) => (
+        p.id === product.id
+          ? { ...p, assigned_to: updated.assigned_to, assignee: updated.assignee || { id: userId, username: username || '' } }
+          : p
+      )));
+      toast.success('Task claimed');
+    } catch (err: any) {
+      toast.error(err.message || 'Claim failed');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleReleaseTask = async () => {
+    setAssigning(true);
+    try {
+      await fetchWithAuth(`/products/${product.id}/assign`, {
+        method: 'PATCH',
+        body: JSON.stringify({ assigned_to: null }),
+      });
+      setProducts(products.map((p) => (
+        p.id === product.id ? { ...p, assigned_to: null, assignee: null } : p
+      )));
+      toast.success('Task moved back to unassigned');
+    } catch (err: any) {
+      toast.error(err.message || 'Unassign failed');
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -89,7 +140,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, style }) => {
             onClick={handleToggleComplete}
             className="mt-0.5 flex-shrink-0 text-gray-300 hover:text-green-500 transition-colors focus:outline-none"
           >
-            {product.completed ? <CheckCircle2 className="text-green-500" size={24} /> : <Circle size={24} />}
+            {product.status === 'completed' ? <CheckCircle2 className="text-green-500" size={24} /> : product.status === 'in-progress' ? <Clock className="text-blue-500" size={24} /> : <Circle size={24} />}
           </button>
 
           {product.thumbnail_url && (
@@ -102,6 +153,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, style }) => {
                 {product.product_name}
               </h3>
               <div className="flex gap-1 flex-shrink-0">
+                <span className={`text-[9px] font-bold uppercase px-1.5 py-1 rounded-md ${
+                  product.status === 'completed' ? 'bg-green-100 text-green-700' : product.status === 'in-progress' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  {product.status}
+                </span>
                 <button 
                   onClick={() => copyToClipboard(product.product_name, 'Product Name')}
                   className={`p-1.5 rounded-md transition-colors border ${product.nameCopied ? 'text-green-600 bg-green-50 border-green-200' : 'text-gray-500 bg-white hover:bg-gray-50 border-gray-200'}`}
@@ -111,6 +167,23 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, style }) => {
                 </button>
               </div>
             </div>
+
+            {connectionMode === 'server' && (
+              <div className="mb-2 flex items-center justify-between text-[11px]">
+                <span className={isUnassigned ? 'font-semibold text-amber-600' : isMine ? 'font-semibold text-green-700' : 'text-gray-500'}>
+                  {isUnassigned ? 'Unassigned' : isMine ? 'Assigned to you' : `Assigned to ${product.assignee?.username || 'worker'}`}
+                </span>
+                {isMine && (
+                  <button
+                    onClick={handleReleaseTask}
+                    disabled={assigning}
+                    className="inline-flex items-center gap-1 rounded-md border border-red-100 bg-red-50 px-2 py-1 font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
+                  >
+                    <UserMinus size={11} /> Unassign
+                  </button>
+                )}
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between text-xs bg-blue-50/50 p-2 rounded-lg border border-blue-100">
@@ -157,6 +230,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, style }) => {
             </div>
 
             <div className="mt-3 flex justify-end">
+              {connectionMode === 'server' && isUnassigned && (
+                <button
+                  onClick={handleClaimTask}
+                  disabled={assigning}
+                  className="mr-auto rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                >
+                  {assigning ? 'Claiming...' : '+ Claim this task'}
+                </button>
+              )}
               <button 
                 onClick={() => setShowNotes(!showNotes)}
                 className={`text-[11px] flex items-center gap-1 font-semibold transition-colors px-2 py-1 rounded-md ${product.notes ? 'text-amber-700 bg-amber-50 hover:bg-amber-100' : 'text-gray-500 bg-gray-50 hover:bg-gray-100'}`}

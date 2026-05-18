@@ -38,6 +38,7 @@ function App() {
         thumbnail_url: p.thumbnail_url || undefined,
         assigned_to: p.assigned_to || null,
         assignee: p.assignee || null,
+        status: p.status || 'pending',
         completed: p.status === 'completed',
         notes: p.notes || '',
         nameCopied: false,
@@ -47,26 +48,14 @@ function App() {
         referenceOpened: false
       }));
 
-      // Filter tasks to only show those assigned to the logged-in worker,
-      // or unassigned ones that they can work on!
-      // This is a great user experience:
-      const workerTasks = mapped.filter((p: any) => {
-        // Find if this product is assigned to this user
-        const isAssignedToMe = p.assignee?.username === username;
-        const isUnassigned = !p.assigned_to && !p.assignee;
-        return isAssignedToMe || isUnassigned;
-      });
-
-      // If there are no specifically assigned tasks, fallback to showing all mapped products 
-      // so the popup is never empty
-      setProducts(workerTasks.length > 0 ? workerTasks : mapped);
+      setProducts(mapped);
       toast.success('Tasks updated from server');
     } catch (err: any) {
       toast.error('Failed to sync tasks with server');
     } finally {
       setRefreshing(false);
     }
-  }, [connectionMode, token, username, setProducts]);
+  }, [connectionMode, token, setProducts]);
 
   // Sync tasks on server environment change or connectionMode change
   useEffect(() => {

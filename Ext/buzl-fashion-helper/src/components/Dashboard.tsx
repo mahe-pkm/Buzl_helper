@@ -4,16 +4,20 @@ import { useCsvStore } from '../store/useCsvStore';
 import type { FilterStatus } from '../types';
 
 export const Dashboard: React.FC = () => {
-  const { products, searchQuery, setSearchQuery, activeFilter, setActiveFilter } = useCsvStore();
+  const { products, userId, searchQuery, setSearchQuery, activeFilter, setActiveFilter, activeView, setActiveView } = useCsvStore();
 
-  const total = products.length;
-  const completed = products.filter((p) => p.completed).length;
-  const pending = total - completed;
+  const myProducts = products.filter((p) => p.assigned_to === userId);
+  const unassignedProducts = products.filter((p) => !p.assigned_to);
+  const total = activeView === 'mine' ? myProducts.length : products.length;
+  const completed = (activeView === 'mine' ? myProducts : products).filter((p) => p.status === 'completed').length;
+  const doing = (activeView === 'mine' ? myProducts : products).filter((p) => p.status === 'in-progress').length;
+  const pending = (activeView === 'mine' ? myProducts : products).filter((p) => p.status === 'pending').length;
   const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
 
   const filters: { label: string; value: FilterStatus }[] = [
     { label: 'All', value: 'all' },
     { label: 'Pending', value: 'pending' },
+    { label: 'In-Progress', value: 'in-progress' },
     { label: 'Completed', value: 'completed' },
   ];
 
@@ -22,12 +26,16 @@ export const Dashboard: React.FC = () => {
       <div className="flex justify-between items-end">
         <div className="flex flex-col gap-1">
           <span className="text-3xl font-bold text-gray-900 leading-none">{progress}%</span>
-          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Progress</span>
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{activeView === 'mine' ? 'My Progress' : 'All Progress'}</span>
         </div>
-        <div className="flex gap-5 text-right">
+        <div className="flex gap-4 text-right">
           <div className="flex flex-col">
             <span className="text-lg font-bold text-gray-800 leading-none">{completed}</span>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Done</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-lg font-bold text-blue-600 leading-none">{doing}</span>
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Doing</span>
           </div>
           <div className="flex flex-col">
             <span className="text-lg font-bold text-gray-800 leading-none">{pending}</span>
@@ -41,6 +49,26 @@ export const Dashboard: React.FC = () => {
           className="bg-green-500 h-full transition-all duration-500 ease-out"
           style={{ width: `${progress}%` }}
         />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => setActiveView('mine')}
+          className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+            activeView === 'mine' ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-200 text-gray-600'
+          }`}
+        >
+          My Tasks <span className="ml-1 opacity-80">({myProducts.length})</span>
+          {unassignedProducts.length > 0 && <span className="ml-1 text-amber-500">{unassignedProducts.length} free</span>}
+        </button>
+        <button
+          onClick={() => setActiveView('all')}
+          className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
+            activeView === 'all' ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-200 text-gray-600'
+          }`}
+        >
+          All Products <span className="ml-1 opacity-80">({products.length})</span>
+        </button>
       </div>
 
       <div className="relative mt-1">

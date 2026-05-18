@@ -17,11 +17,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!product) return jsonWithCors(req, { error: "Not found" }, { status: 404 });
 
     if (authUser.role !== "admin") {
-      if (assigned_to !== authUser.id) {
+      const isClaimingSelf = assigned_to === authUser.id;
+      const isReleasingOwnTask = assigned_to === null && product.assigned_to === authUser.id;
+
+      if (!isClaimingSelf && !isReleasingOwnTask) {
         return jsonWithCors(req, { error: "Workers can only claim tasks for themselves" }, { status: 403 });
       }
 
-      if (product.assigned_to && product.assigned_to !== authUser.id) {
+      if (isClaimingSelf && product.assigned_to && product.assigned_to !== authUser.id) {
         return jsonWithCors(req, { error: "Task is already assigned" }, { status: 409 });
       }
     }

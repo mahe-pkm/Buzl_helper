@@ -4,8 +4,9 @@ import requests
 import re
 import csv
 import threading
+import os
 
-API_KEY = "AIzaSyCNYAZl2jIY9ZEM1HBswSODnYlpPsxSVw4"
+API_KEY = os.environ.get("GOOGLE_DRIVE_API_KEY", "")
 
 class GDriveExtractorApp:
     def __init__(self, root):
@@ -108,6 +109,10 @@ class GDriveExtractorApp:
             self.save_btn.config(state='normal')
         
     def start_extraction(self):
+        if not API_KEY:
+            messagebox.showwarning("Configuration Error", "Set GOOGLE_DRIVE_API_KEY before running this tool.")
+            return
+
         url = self.url_entry.get()
         if not url:
             messagebox.showwarning("Input Error", "Please enter a Google Drive folder URL.")

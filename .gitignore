@@ -19,6 +19,11 @@
 **/.env.test.local
 **/.env.production.local
 
+# Local agent/deployment metadata
+.codex_logs/
+.vercel/
+**/.vercel/
+
 # IDEs and Editors
 .vscode/
 .idea/

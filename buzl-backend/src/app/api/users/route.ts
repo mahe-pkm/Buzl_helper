@@ -1,25 +1,30 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { getUserFromRequest } from "@/lib/auth";
+import { corsPreflight, jsonWithCors } from "@/lib/cors";
+
+export async function OPTIONS(req: NextRequest) {
+  return corsPreflight(req);
+}
 
 export async function GET(req: NextRequest) {
   const authUser = getUserFromRequest(req);
   if (!authUser || authUser.role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return jsonWithCors(req, { error: "Unauthorized" }, { status: 401 });
   }
 
   const users = await prisma.user.findMany({
     select: { id: true, username: true, role: true },
   });
 
-  return NextResponse.json(users);
+  return jsonWithCors(req, users);
 }
 
 export async function POST(req: NextRequest) {
   const authUser = getUserFromRequest(req);
   if (!authUser || authUser.role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return jsonWithCors(req, { error: "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -27,7 +32,7 @@ export async function POST(req: NextRequest) {
 
     const existingUser = await prisma.user.findUnique({ where: { username } });
     if (existingUser) {
-      return NextResponse.json({ error: "Username already exists" }, { status: 400 });
+      return jsonWithCors(req, { error: "Username already exists" }, { status: 400 });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -40,8 +45,8 @@ export async function POST(req: NextRequest) {
       select: { id: true, username: true, role: true },
     });
 
-    return NextResponse.json(user);
-  } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return jsonWithCors(req, user);
+  } catch {
+    return jsonWithCors(req, { error: "Internal server error" }, { status: 500 });
   }
 }

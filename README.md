@@ -3,7 +3,7 @@
 Welcome to the **Buzl Fashion Helper** ecosystem—a high-productivity tool suite designed to optimize, automate, and streamline bulk Google Drive DNG importing and worker task assignment workflows for fashion photo post-processing operations.
 
 This ecosystem is composed of three tightly coupled, highly efficient systems:
-1. **Buzl Backend API** (`buzl-backend`): Next.js REST API with Prisma & SQLite.
+1. **Buzl Backend API** (`buzl-backend`): Next.js REST API with Prisma & MySQL.
 2. **Admin Web Dashboard** (`buzl-fashion-helper-FULL_DEV`): Modern React / Vite administration dashboard.
 3. **Worker Chrome Extension** (`Ext/buzl-fashion-helper`): Lightweight React / Vite Chrome Extension for workers.
 
@@ -25,7 +25,7 @@ graph TD
 
     subgraph Backend Server
         API[Next.js Server API]
-        DB[(Prisma / SQLite Database)]
+        DB[(Prisma / MySQL Database)]
     end
 
     subgraph Chrome Extension
@@ -37,7 +37,7 @@ graph TD
     GD -- Fetch folders & generate DNG thumbnails --> GDExtractor
     GDExtractor -- JSON post payload --> API
     CSV -- Parse CSV rows --> API
-    API -- Write to SQLite --> DB
+    API -- Write to MySQL --> DB
     ExtPopup -- Fetch Assigned Tasks --> API
     Dashboard -- Get Products / Assign Workers --> API
 ```
@@ -100,12 +100,17 @@ A hyper-focused extension popup built in React & TypeScript that sits right in t
    ```bash
    npm install
    ```
-3. Set up the local SQLite database and sync schemas:
+3. Configure the backend environment:
+   ```bash
+   copy .env.example .env
+   ```
+   Fill in `DATABASE_URL`, `JWT_SECRET`, and `ALLOWED_ORIGINS`.
+4. Sync the Prisma schema:
    ```bash
    npx prisma db push
    npx prisma generate
    ```
-4. Start the Next.js development server:
+5. Start the Next.js development server:
    ```bash
    npm run dev
    ```
@@ -120,7 +125,12 @@ A hyper-focused extension popup built in React & TypeScript that sits right in t
    ```bash
    npm install
    ```
-3. Boot up the Vite server:
+3. Configure the dashboard environment:
+   ```bash
+   copy .env.example .env
+   ```
+   Set `VITE_GOOGLE_DRIVE_API_KEY` to a Google Drive API key restricted by HTTP referrer and API scope.
+4. Boot up the Vite server:
    ```bash
    npm run dev
    ```
@@ -147,7 +157,7 @@ A hyper-focused extension popup built in React & TypeScript that sits right in t
 ## 🔒 Security & Environment Warnings
 
 > [!WARNING]
-> **API Keys Exposure**: The Google Drive API v3 key is currently stored inside client-side modules to support rapid deployment workflows. For production, it is highly recommended to move this key into Next.js Environment Variables (`.env.local`) and call the Google API via a secured Next.js server route to prevent API key scraping.
+> **API Keys**: The Google Drive API key is no longer hardcoded in source. Set `VITE_GOOGLE_DRIVE_API_KEY` locally and restrict the key in Google Cloud. For stronger production security, proxy Drive calls through a backend route.
 
 > [!IMPORTANT]
-> **Production DB Migration**: The application is configured to run on an ephemeral SQLite file (`dev.db`). Before deploying to production hostings (Vercel, Render), you must swap the SQLite connection string in the backend `.env` file with a cloud-managed PostgreSQL connection string (e.g., Neon or Supabase) and run `npx prisma db push` to initialize it.
+> **Production DB**: The backend is configured for MySQL through Prisma. Keep the production `DATABASE_URL` and `JWT_SECRET` out of source control, rotate copied/shared credentials, and run `npx prisma db push` when initializing a new database.

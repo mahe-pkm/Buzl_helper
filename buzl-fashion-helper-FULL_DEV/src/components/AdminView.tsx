@@ -103,10 +103,16 @@ export const AdminView: React.FC = () => {
     else if (idMatch) folderId = idMatch[1];
     else if (dMatch) folderId = dMatch[1];
 
+    const API_KEY = import.meta.env.VITE_GOOGLE_DRIVE_API_KEY;
+    if (!API_KEY) {
+      setDriveLog(['Google Drive API key is missing. Add VITE_GOOGLE_DRIVE_API_KEY to buzl-fashion-helper-FULL_DEV/.env and restart Vite.']);
+      toast.error('Missing VITE_GOOGLE_DRIVE_API_KEY');
+      return;
+    }
+
     setDriveImporting(true);
     setDriveLog(['Starting Google Drive extraction...']);
     const addLog = (msg: string) => setDriveLog(prev => [...prev, msg]);
-    const API_KEY = "AIzaSyCNYAZl2jIY9ZEM1HBswSODnYlpPsxSVw4";
     const allFolders: any[] = [];
 
     const fetchThumbnail = async (id: string): Promise<string | null> => {
@@ -208,8 +214,7 @@ export const AdminView: React.FC = () => {
     askConfirm(`Delete ALL ${products.length} products? This cannot be undone.`, async () => {
       setClearing(true);
       try {
-        const res = await fetchWithAuth('/products', { method: 'DELETE' });
-        if (!res.ok) throw new Error('Clear failed');
+        await fetchWithAuth('/products', { method: 'DELETE' });
         setProducts([]); setSelectedIds(new Set());
         toast.success('All products deleted.');
       } catch { toast.error('Failed to clear products'); }
@@ -282,7 +287,15 @@ export const AdminView: React.FC = () => {
     } catch { toast.error('Status update failed'); }
   };
 
-  const toggleSelect = (id: string) => setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const toggleSelect = (id: string) => setSelectedIds(prev => {
+    const s = new Set(prev);
+    if (s.has(id)) {
+      s.delete(id);
+    } else {
+      s.add(id);
+    }
+    return s;
+  });
   const toggleSelectAll = () => setSelectedIds(prev => prev.size === filteredAndSorted.length ? new Set() : new Set(filteredAndSorted.map((p: Product) => p.id)));
 
   const handleAssign = async (productId: string, workerId: string) => {
@@ -329,7 +342,7 @@ export const AdminView: React.FC = () => {
   };
 
   const filteredAndSorted = useMemo(() => {
-    let result = products.filter(p => {
+    const result = products.filter(p => {
       if (filterStatus !== 'all' && p.status !== filterStatus) return false;
       if (filterWorker === 'unassigned' && p.assigned_to) return false;
       if (filterWorker !== 'all' && filterWorker !== 'unassigned' && p.assigned_to !== filterWorker) return false;

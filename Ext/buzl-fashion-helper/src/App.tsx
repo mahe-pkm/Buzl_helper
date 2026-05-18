@@ -36,6 +36,8 @@ function App() {
         drive_folder: p.drive_folder,
         reference_link: p.reference_link || undefined,
         thumbnail_url: p.thumbnail_url || undefined,
+        assigned_to: p.assigned_to || null,
+        assignee: p.assignee || null,
         completed: p.status === 'completed',
         notes: p.notes || '',
         nameCopied: false,
@@ -50,7 +52,7 @@ function App() {
       // This is a great user experience:
       const workerTasks = mapped.filter((p: any) => {
         // Find if this product is assigned to this user
-        const isAssignedToMe = p.assigned_to === username || (p.assignee && p.assignee.username === username);
+        const isAssignedToMe = p.assignee?.username === username;
         const isUnassigned = !p.assigned_to && !p.assignee;
         return isAssignedToMe || isUnassigned;
       });

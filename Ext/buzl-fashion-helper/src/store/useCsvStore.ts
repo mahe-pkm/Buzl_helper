@@ -44,10 +44,10 @@ export const useCsvStore = create<CsvState>()(
       activeFilter: 'all',
 
       // Defaults
-      connectionMode: 'local',
+      connectionMode: 'server',
       serverEnvironment: 'production',
-      vercelUrl: 'https://buzl-dev.vercel.app/api',
-      hostingerUrl: 'https://buzl-production.com/api',
+      vercelUrl: 'https://buzl-helper.vercel.app/api',
+      hostingerUrl: 'https://buzl-helper.vercel.app/api',
       customUrl: 'http://localhost:3000/api',
       token: null,
       username: null,
@@ -72,7 +72,7 @@ export const useCsvStore = create<CsvState>()(
     }),
     {
       name: 'buzl-csv-storage',
-      version: 3, // bumping version clears stale cached data
+      version: 4, // bumping version clears stale cached data
     }
   )
 );

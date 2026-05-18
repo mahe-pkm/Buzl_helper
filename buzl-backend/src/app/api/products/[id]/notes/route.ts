@@ -1,10 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
+import { corsPreflight, jsonWithCors } from "@/lib/cors";
+
+export async function OPTIONS(req: NextRequest) {
+  return corsPreflight(req);
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authUser = getUserFromRequest(req);
-  if (!authUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!authUser) return jsonWithCors(req, { error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
   try {
     const { notes } = await req.json();
@@ -12,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (authUser.role !== "admin") {
       const product = await prisma.product.findUnique({ where: { id } });
       if (product?.assigned_to !== authUser.id) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        return jsonWithCors(req, { error: "Forbidden" }, { status: 403 });
       }
     }
 
@@ -23,8 +28,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         last_action: 'Notes updated' 
       } 
     });
-    return NextResponse.json(updated);
+    return jsonWithCors(req, updated);
   } catch {
-    return NextResponse.json({ error: "Update failed" }, { status: 500 });
+    return jsonWithCors(req, { error: "Update failed" }, { status: 500 });
   }
 }

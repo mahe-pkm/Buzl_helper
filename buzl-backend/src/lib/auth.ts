@@ -1,16 +1,36 @@
 import { NextRequest } from "next/server";
-import jwt from "jsonwebtoken";
+import jwt, { JwtPayload } from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "super-secret-key-for-buzl-fashion";
+const FALLBACK_JWT_SECRET = "development-only-buzl-secret";
 
-export function signToken(payload: object) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+export type AuthUser = JwtPayload & {
+  id: string;
+  username: string;
+  role: "admin" | "worker" | string;
+};
+
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET is required in production");
+  }
+
+  return secret || FALLBACK_JWT_SECRET;
 }
 
-export function verifyToken(token: string) {
+export function signToken(payload: object) {
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: "7d" });
+}
+
+export function verifyToken(token: string): AuthUser | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as any;
-  } catch (e) {
+    const decoded = jwt.verify(token, getJwtSecret());
+    if (typeof decoded === "string" || !decoded.id || !decoded.username || !decoded.role) {
+      return null;
+    }
+    return decoded as AuthUser;
+  } catch {
     return null;
   }
 }

@@ -1,5 +1,13 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Environment
+
+Copy `.env.example` to `.env`, then set:
+
+- `DATABASE_URL`: MySQL connection string used by Prisma.
+- `JWT_SECRET`: long random secret for signing auth tokens.
+- `ALLOWED_ORIGINS`: comma-separated frontend origins allowed by CORS.
+
 ## Getting Started
 
 First, run the development server:

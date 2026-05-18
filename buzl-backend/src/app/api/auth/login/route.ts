@@ -1,18 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 export const dynamic = "force-dynamic";
 import { prisma } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { signToken } from "@/lib/auth";
+import { corsPreflight, jsonWithCors } from "@/lib/cors";
 
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    },
-  });
+export async function OPTIONS(req: NextRequest) {
+  return corsPreflight(req);
 }
 
 export async function POST(req: NextRequest) {
@@ -21,7 +15,7 @@ export async function POST(req: NextRequest) {
     const cleanUsername = String(username).trim();
 
     if (!cleanUsername) {
-      return NextResponse.json({ error: "Username is required" }, { status: 400 });
+      return jsonWithCors(req, { error: "Username is required" }, { status: 400 });
     }
 
     const isAdmin = cleanUsername.toLowerCase() === "admin";
@@ -33,19 +27,16 @@ export async function POST(req: NextRequest) {
       });
 
       if (!user) {
-        return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+        return jsonWithCors(req, { error: "Invalid credentials" }, { status: 401 });
       }
 
       const isValid = await bcrypt.compare(password || "", user.passwordHash);
       if (!isValid) {
-        return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+        return jsonWithCors(req, { error: "Invalid credentials" }, { status: 401 });
       }
 
       const token = signToken({ id: user.id, username: user.username, role: user.role });
-      return NextResponse.json(
-        { token, user: { id: user.id, username: user.username, role: user.role } },
-        { headers: { "Access-Control-Allow-Origin": "*" } }
-      );
+      return jsonWithCors(req, { token, user: { id: user.id, username: user.username, role: user.role } });
     }
 
     // 2. Worker login flow (Passwordless / Auto-register)
@@ -66,11 +57,8 @@ export async function POST(req: NextRequest) {
     }
 
     const token = signToken({ id: user.id, username: user.username, role: user.role });
-    return NextResponse.json(
-      { token, user: { id: user.id, username: user.username, role: user.role } },
-      { headers: { "Access-Control-Allow-Origin": "*" } }
-    );
-  } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return jsonWithCors(req, { token, user: { id: user.id, username: user.username, role: user.role } });
+  } catch {
+    return jsonWithCors(req, { error: "Internal server error" }, { status: 500 });
   }
 }

@@ -2,14 +2,12 @@ import { useCsvStore } from '../store/useCsvStore';
 
 export function getBaseUrl(): string {
   const state = useCsvStore.getState();
-  let url = '';
-  if (state.serverEnvironment === 'development') {
-    url = state.vercelUrl;
-  } else if (state.serverEnvironment === 'production') {
-    url = state.hostingerUrl;
-  } else {
-    url = state.customUrl;
-  }
+  let url =
+    state.serverEnvironment === 'development'
+      ? state.vercelUrl
+      : state.serverEnvironment === 'production'
+        ? state.hostingerUrl
+        : state.customUrl;
 
   // Clean trailing slashes and whitespace
   url = url.trim().replace(/\/+$/, '');

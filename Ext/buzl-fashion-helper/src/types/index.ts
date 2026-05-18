@@ -4,6 +4,8 @@ export interface Product {
   drive_folder: string;
   reference_link?: string;
   thumbnail_url?: string;
+  assigned_to?: string | null;
+  assignee?: { id: string; username: string } | null;
   completed: boolean;
   nameCopied: boolean;
   driveCopied: boolean;

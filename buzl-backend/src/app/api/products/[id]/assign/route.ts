@@ -1,22 +1,41 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
+import { corsPreflight, jsonWithCors } from "@/lib/cors";
+
+export async function OPTIONS(req: NextRequest) {
+  return corsPreflight(req);
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authUser = getUserFromRequest(req);
-  if (!authUser || authUser.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!authUser) return jsonWithCors(req, { error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
   try {
-    const { assigned_to } = await req.json();
-    const product = await prisma.product.update({
+    const { assigned_to } = (await req.json()) as { assigned_to?: string | null };
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) return jsonWithCors(req, { error: "Not found" }, { status: 404 });
+
+    if (authUser.role !== "admin") {
+      if (assigned_to !== authUser.id) {
+        return jsonWithCors(req, { error: "Workers can only claim tasks for themselves" }, { status: 403 });
+      }
+
+      if (product.assigned_to && product.assigned_to !== authUser.id) {
+        return jsonWithCors(req, { error: "Task is already assigned" }, { status: 409 });
+      }
+    }
+
+    const updated = await prisma.product.update({
       where: { id },
       data: { 
         assigned_to: assigned_to ?? null,
-        last_action: assigned_to ? 'Assigned to worker' : 'Unassigned'
+        last_action: assigned_to ? "Assigned to worker" : "Unassigned"
       },
+      include: { assignee: { select: { id: true, username: true } } },
     });
-    return NextResponse.json(product);
-  } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return jsonWithCors(req, updated);
+  } catch {
+    return jsonWithCors(req, { error: "Internal server error" }, { status: 500 });
   }
 }

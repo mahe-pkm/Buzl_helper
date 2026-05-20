@@ -43,7 +43,7 @@ const ThumbnailImage: React.FC<{ thumbnailUrl?: string | null; driveLink?: strin
 };
 
 export const AdminView: React.FC = () => {
-  const { authUser, logout, products, workers, setProducts, setWorkers, updateProduct } = useCsvStore();
+  const { authUser, logout, products, workers, setProducts, setWorkers, updateProduct, setAuth } = useCsvStore();
   const [tab, setTab] = useState<Tab>('products');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -115,6 +115,7 @@ export const AdminView: React.FC = () => {
   const [newRole, setNewRole] = useState('worker');
   const [creatingUser, setCreatingUser] = useState(false);
   const [resetUserId, setResetUserId] = useState<string | null>(null);
+  const [resetUsername, setResetUsername] = useState('');
   const [resetPassword, setResetPassword] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -474,12 +475,32 @@ export const AdminView: React.FC = () => {
   };
 
   const handleResetPassword = async (id: string) => {
-    if (!resetPassword.trim()) return;
+    const cleanUsername = resetUsername.trim();
+    const cleanPassword = resetPassword.trim();
+    if (!cleanUsername && !cleanPassword) {
+      toast.error('Enter new username or password');
+      return;
+    }
+
     try {
-      await fetchWithAuth(`/users/${id}`, { method: 'PATCH', body: JSON.stringify({ password: resetPassword }) });
-      toast.success('Password reset!');
-      setResetUserId(null); setResetPassword('');
-    } catch { toast.error('Reset failed'); }
+      const payload: { username?: string; password?: string } = {};
+      if (cleanUsername) payload.username = cleanUsername;
+      if (cleanPassword) payload.password = cleanPassword;
+
+      const updatedUser = await fetchWithAuth(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+      setWorkers(workers.map((w) => (w.id === id ? { ...w, username: updatedUser.username } : w)));
+
+      if (authUser?.id === id && cleanUsername) {
+        setAuth({ ...authUser, username: updatedUser.username });
+      }
+
+      toast.success(cleanPassword ? 'Credentials updated!' : 'Username updated!');
+      setResetUserId(null);
+      setResetUsername('');
+      setResetPassword('');
+    } catch (e: any) {
+      toast.error(e.message || 'Reset failed');
+    }
   };
 
   const filteredAndSorted = useMemo(() => {
@@ -1128,16 +1149,39 @@ export const AdminView: React.FC = () => {
                                 )}
                                 <div className="flex items-center gap-1">
                                   {resetUserId === w.id ? (
-                                    <div className="flex items-center gap-1">
-                                      <input type="password" placeholder="New password" value={resetPassword} onChange={e => setResetPassword(e.target.value)}
-                                        className="text-xs border border-gray-200 rounded px-2 py-1 w-28 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                                      <button onClick={() => handleResetPassword(w.id)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Confirm"><CheckCircle2 size={15} /></button>
-                                      <button onClick={() => { setResetUserId(null); setResetPassword(''); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded" title="Cancel"><X size={15} /></button>
+                                    <div className="flex flex-col gap-1">
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="text"
+                                          placeholder="New username"
+                                          value={resetUsername}
+                                          onChange={e => setResetUsername(e.target.value)}
+                                          className="text-xs border border-gray-200 rounded px-2 py-1 w-32 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                        <input
+                                          type="password"
+                                          placeholder="New password"
+                                          value={resetPassword}
+                                          onChange={e => setResetPassword(e.target.value)}
+                                          className="text-xs border border-gray-200 rounded px-2 py-1 w-32 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <button onClick={() => handleResetPassword(w.id)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Confirm"><CheckCircle2 size={15} /></button>
+                                        <button
+                                          onClick={() => { setResetUserId(null); setResetUsername(''); setResetPassword(''); }}
+                                          className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                                          title="Cancel"
+                                        >
+                                          <X size={15} />
+                                        </button>
+                                      </div>
                                     </div>
                                   ) : (
-                                    <button onClick={() => setResetUserId(w.id)}
+                                    <button
+                                      onClick={() => { setResetUserId(w.id); setResetUsername(w.username); setResetPassword(''); }}
                                       className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 bg-gray-100 hover:bg-blue-50 px-2 py-1.5 rounded-lg transition-colors">
-                                      <KeyRound size={13} /> Reset
+                                      <KeyRound size={13} /> Edit
                                     </button>
                                   )}
                                   {w.id !== authUser?.id && (

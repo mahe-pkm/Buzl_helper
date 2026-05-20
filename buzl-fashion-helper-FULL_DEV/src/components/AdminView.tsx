@@ -7,10 +7,40 @@ import { fetchWithAuth } from '../utils/api';
 import { parseCSV } from '../utils/csvParser';
 import type { Product } from '../types';
 import { TaskTimer } from './TaskTimer';
+import { buildDriveThumbnailUrl, buildThumbnailCandidates } from '../utils/driveThumbnail';
 
 type Tab = 'products' | 'users';
 const LAST_DRIVE_LINK_KEY = 'buzl_last_drive_link';
 const LAST_REFERENCE_LINK_KEY = 'buzl_last_reference_link';
+
+const ThumbnailImage: React.FC<{ thumbnailUrl?: string | null; driveLink?: string | null; className: string; alt?: string }> = ({
+  thumbnailUrl,
+  driveLink,
+  className,
+  alt = 'Preview',
+}) => {
+  const candidates = useMemo(
+    () => buildThumbnailCandidates(thumbnailUrl, driveLink),
+    [thumbnailUrl, driveLink],
+  );
+  const [thumbnailIndex, setThumbnailIndex] = useState(0);
+
+  useEffect(() => {
+    setThumbnailIndex(0);
+  }, [candidates.join('|')]);
+
+  const src = candidates[thumbnailIndex];
+  if (!src) return null;
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setThumbnailIndex((prev) => (prev < candidates.length - 1 ? prev + 1 : prev))}
+    />
+  );
+};
 
 export const AdminView: React.FC = () => {
   const { authUser, logout, products, workers, setProducts, setWorkers, updateProduct } = useCsvStore();
@@ -161,11 +191,15 @@ export const AdminView: React.FC = () => {
         const url = new URL("https://www.googleapis.com/drive/v3/files");
         url.searchParams.append('q', `'${id}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`);
         url.searchParams.append('key', API_KEY);
-        url.searchParams.append('fields', 'files(thumbnailLink)');
-        url.searchParams.append('pageSize', '1');
+        url.searchParams.append('fields', 'files(id,thumbnailLink)');
+        url.searchParams.append('pageSize', '20');
         const res = await fetch(url.toString());
         const data = await res.json();
-        return data.files && data.files.length > 0 ? data.files[0].thumbnailLink : null;
+        const files = Array.isArray(data?.files) ? data.files : [];
+        const targetFile = files.find((file: any) => file?.id || file?.thumbnailLink);
+        if (!targetFile) return null;
+        if (targetFile.id) return buildDriveThumbnailUrl(targetFile.id);
+        return targetFile.thumbnailLink || null;
       } catch { return null; }
     };
 
@@ -611,7 +645,14 @@ export const AdminView: React.FC = () => {
                         newArr[i].selected = e.target.checked;
                         setDriveFoundFolders(newArr);
                       }} className="mt-1 rounded text-blue-600 focus:ring-blue-500 flex-shrink-0" />
-                      {f.thumbnail && <img src={f.thumbnail} alt="Preview" className="w-8 h-8 rounded object-cover shadow-sm flex-shrink-0 bg-white" />}
+                      {buildThumbnailCandidates(f.thumbnail, f.webViewLink).length > 0 && (
+                        <ThumbnailImage
+                          thumbnailUrl={f.thumbnail}
+                          driveLink={f.webViewLink}
+                          alt="Preview"
+                          className="w-8 h-8 rounded object-cover shadow-sm flex-shrink-0 bg-white"
+                        />
+                      )}
                       <div className="flex flex-col">
                         <span className="text-sm font-semibold text-gray-900 break-all">{f.path}</span>
                         {f.exists && <span className="text-xs text-amber-600 font-bold mt-0.5">Already in dashboard</span>}
@@ -834,8 +875,13 @@ export const AdminView: React.FC = () => {
                           <td className="px-3 py-2.5"><input type="checkbox" checked={selectedIds.has(product.id)} onChange={() => toggleSelect(product.id)} className="rounded" /></td>
                           <td className="px-3 py-2.5 text-gray-400 text-xs">{(currentPage - 1) * (pageSize === 'ALL' ? 0 : pageSize) + idx + 1}</td>
                           <td className="px-3 py-2.5">
-                            {product.thumbnail_url ? (
-                              <img src={product.thumbnail_url} alt="Preview" className="w-8 h-8 rounded-md object-cover border border-gray-200" />
+                            {buildThumbnailCandidates(product.thumbnail_url, product.drive_folder).length > 0 ? (
+                              <ThumbnailImage
+                                thumbnailUrl={product.thumbnail_url}
+                                driveLink={product.drive_folder}
+                                alt="Preview"
+                                className="w-8 h-8 rounded-md object-cover border border-gray-200"
+                              />
                             ) : (
                               <div className="w-8 h-8 rounded-md bg-gray-100 border border-gray-200 flex items-center justify-center">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Copy, ExternalLink, Check, CheckCircle2, Circle, Clock, MessageSquare, UserMinus, ChevronDown, ChevronUp, Play, Timer, Flag, RotateCcw, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Copy, ExternalLink, Check, CheckCircle2, Circle, Clock, MessageSquare, UserMinus, ChevronDown, ChevronUp, Play, Timer, Flag, RotateCcw, Sparkles, Undo2 } from 'lucide-react';
 import { useCsvStore } from '../store/useCsvStore';
 import { fetchWithAuth } from '../utils/api';
 import type { Product, ProductActionLog, TimerAction } from '../types';
 import { toast } from 'sonner';
+import { buildThumbnailCandidates } from '../utils/driveThumbnail';
 
 interface ProductCardProps {
   product: Product;
@@ -18,7 +19,15 @@ const TIMER_STEPS: { action: TimerAction; label: string; shortLabel: string; las
   { action: 'qc_correction_start', label: 'QC Start', shortLabel: 'QC', lastAction: 'QC and correction started' },
   { action: 'finish', label: 'Finish', shortLabel: 'Finish', lastAction: 'Task finished' },
 ];
+const TIMER_ACTION_ORDER: TimerAction[] = ['generation_start', 'generation_complete', 'qc_correction_start', 'finish'];
 const REGEN_ACTION: TimerAction = 'regeneration';
+const ACTION_LAST_LABELS: Record<TimerAction, string> = {
+  generation_start: 'Generation started',
+  generation_complete: 'Generation completed',
+  qc_correction_start: 'QC and correction started',
+  finish: 'Task finished',
+  regeneration: 'Regeneration requested',
+};
 
 const getTimerStatusPatch = (action: TimerAction): Partial<Product> => {
   if (action === 'finish') {
@@ -133,6 +142,30 @@ const showMilestoneToast = (action: TimerAction) => {
   return true;
 };
 
+const getResetCascadeActions = (action: TimerAction) => {
+  const idx = TIMER_ACTION_ORDER.indexOf(action);
+  if (idx < 0) return [action];
+  return TIMER_ACTION_ORDER.slice(idx);
+};
+
+const deriveProductStateFromLogs = (logs: ProductActionLog[]): Partial<Product> => {
+  const hasFinish = logs.some((log) => log.action === 'finish');
+  const hasStartedFlow = logs.some((log) =>
+    log.action === 'generation_start' ||
+    log.action === 'generation_complete' ||
+    log.action === 'qc_correction_start'
+  );
+
+  const sortedLogs = [...logs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const latestLog = sortedLogs[0];
+
+  return {
+    status: hasFinish ? 'completed' : hasStartedFlow ? 'in-progress' : 'pending',
+    completed: hasFinish,
+    last_action: latestLog ? ACTION_LAST_LABELS[latestLog.action] : null,
+  };
+};
+
 export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onToggleExpand, style }) => {
   const { updateProduct, products, setProducts, globalReferenceUrl, connectionMode, userId, username } = useCsvStore();
   const [showNotes, setShowNotes] = useState(false);
@@ -141,7 +174,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
   const [assigning, setAssigning] = useState(false);
   const [loggingAction, setLoggingAction] = useState<TimerAction | null>(null);
   const [loggingRegen, setLoggingRegen] = useState(false);
+  const [resettingAction, setResettingAction] = useState<TimerAction | null>(null);
   const [nowTick, setNowTick] = useState<number>(Date.now());
+  const thumbnailCandidates = useMemo(
+    () => buildThumbnailCandidates(product.thumbnail_url, product.drive_folder),
+    [product.thumbnail_url, product.drive_folder],
+  );
+  const [thumbnailIndex, setThumbnailIndex] = useState(0);
 
   useEffect(() => {
     setLocalNotes(product.notes || '');
@@ -175,6 +214,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     return () => window.clearInterval(intervalId);
   }, [generationStartAt, finishAt]);
 
+  useEffect(() => {
+    setThumbnailIndex(0);
+  }, [product.id, thumbnailCandidates.join('|')]);
+
   const startedAgo = generationStartAt ? `Started ${formatRelativeAgo(generationStartAt, nowTick)}` : 'Not started';
   const processingElapsed = generationStartAt
     ? formatDuration(generationStartAt, finishAt || nowTick)
@@ -203,6 +246,35 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
       active: Boolean(generationStartAt && !finishAt),
     },
   ];
+  const canEditTimers = connectionMode !== 'server' || isMine;
+  const thumbnailSrc = thumbnailCandidates[thumbnailIndex] || null;
+
+  const handleThumbnailError = () => {
+    setThumbnailIndex((prev) => (
+      prev < thumbnailCandidates.length - 1 ? prev + 1 : prev
+    ));
+  };
+
+  const mergeServerProductUpdate = (updated: Product) => {
+    setProducts(products.map((p) => (
+      p.id === product.id
+        ? {
+            ...p,
+            product_name: updated.product_name,
+            drive_folder: updated.drive_folder,
+            reference_link: updated.reference_link || undefined,
+            thumbnail_url: updated.thumbnail_url || undefined,
+            assigned_to: updated.assigned_to || null,
+            assignee: updated.assignee || null,
+            status: updated.status || p.status,
+            completed: updated.status === 'completed',
+            notes: updated.notes || '',
+            actionLogs: updated.actionLogs || [],
+            last_action: updated.last_action || null,
+          }
+        : p
+    )));
+  };
 
   const copyToClipboard = async (text: string, type: string) => {
     try {
@@ -314,25 +386,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
           method: 'POST',
           body: JSON.stringify({ action }),
         });
-
-        setProducts(products.map((p) => (
-          p.id === product.id
-            ? {
-                ...p,
-                product_name: updated.product_name,
-                drive_folder: updated.drive_folder,
-                reference_link: updated.reference_link || undefined,
-                thumbnail_url: updated.thumbnail_url || undefined,
-                assigned_to: updated.assigned_to || null,
-                assignee: updated.assignee || null,
-                status: updated.status || p.status,
-                completed: updated.status === 'completed',
-                notes: updated.notes || '',
-                actionLogs: updated.actionLogs || [],
-                last_action: updated.last_action || null,
-              }
-            : p
-        )));
+        mergeServerProductUpdate(updated);
         const milestoneShown = showMilestoneToast(action);
         if (!milestoneShown) {
           toast.success(`${step?.label || 'Timer'} logged`);
@@ -378,25 +432,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
           method: 'POST',
           body: JSON.stringify({ action: REGEN_ACTION }),
         });
-
-        setProducts(products.map((p) => (
-          p.id === product.id
-            ? {
-                ...p,
-                product_name: updated.product_name,
-                drive_folder: updated.drive_folder,
-                reference_link: updated.reference_link || undefined,
-                thumbnail_url: updated.thumbnail_url || undefined,
-                assigned_to: updated.assigned_to || null,
-                assignee: updated.assignee || null,
-                status: updated.status || p.status,
-                completed: updated.status === 'completed',
-                notes: updated.notes || '',
-                actionLogs: updated.actionLogs || [],
-                last_action: updated.last_action || null,
-              }
-            : p
-        )));
+        mergeServerProductUpdate(updated);
         const nextCount = (updated.actionLogs || []).filter((log: ProductActionLog) => log.action === REGEN_ACTION).length;
         toast.success(`Re-gen count updated: ${nextCount}`);
       } catch (err: any) {
@@ -420,6 +456,59 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     });
     setLoggingRegen(false);
     toast.success(`Re-gen count updated: ${regenCount + 1}`);
+  };
+
+  const handleResetTimerAction = async (action: TimerAction) => {
+    const step = TIMER_STEPS.find((item) => item.action === action);
+
+    if (!canEditTimers) {
+      toast.error('Claim this task before editing timers');
+      return;
+    }
+
+    setResettingAction(action);
+
+    if (connectionMode === 'server') {
+      try {
+        const updated = await fetchWithAuth(`/products/${product.id}/logs`, {
+          method: 'DELETE',
+          body: JSON.stringify({ action }),
+        });
+        mergeServerProductUpdate(updated);
+        toast.success(`${step?.label || 'Timer'} reset`);
+      } catch (err: any) {
+        toast.error(err.message || 'Timer reset failed');
+      } finally {
+        setResettingAction(null);
+      }
+      return;
+    }
+
+    const existingLogs = [...(product.actionLogs || [])];
+    let nextLogs: ProductActionLog[] = existingLogs;
+
+    if (action === REGEN_ACTION) {
+      const regenIndex = existingLogs.findIndex((log) => log.action === REGEN_ACTION);
+      if (regenIndex >= 0) {
+        nextLogs = [...existingLogs.slice(0, regenIndex), ...existingLogs.slice(regenIndex + 1)];
+      }
+    } else {
+      const cascadeActions = new Set(getResetCascadeActions(action));
+      nextLogs = existingLogs.filter((log) => !cascadeActions.has(log.action));
+    }
+
+    if (nextLogs.length === existingLogs.length) {
+      toast.info('Timer step not logged yet');
+      setResettingAction(null);
+      return;
+    }
+
+    updateProduct(product.id, {
+      actionLogs: nextLogs,
+      ...deriveProductStateFromLogs(nextLogs),
+    });
+    setResettingAction(null);
+    toast.success(`${step?.label || 'Timer'} reset`);
   };
 
   const handleSaveNotes = async (text: string) => {
@@ -473,8 +562,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
               {isCompleted ? <CheckCircle2 size={24} className="text-green-600" /> : isInProgress ? <Clock size={24} className="text-[#e98300] animate-[spin_2s_linear_infinite]" /> : <Circle size={24} />}
             </button>
 
-            {product.thumbnail_url && (
-              <img src={product.thumbnail_url} alt="Preview" className="h-12 w-12 flex-shrink-0 rounded-lg object-cover border border-gray-200 bg-white" />
+            {thumbnailSrc && (
+              <img
+                src={thumbnailSrc}
+                alt="Preview"
+                onError={handleThumbnailError}
+                className="h-12 w-12 flex-shrink-0 rounded-lg object-cover border border-gray-200 bg-white"
+              />
             )}
 
             <div className="min-w-0 flex-1">
@@ -600,7 +694,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                   )}
                   <button
                     onClick={handleRegenerationAction}
-                    disabled={loggingRegen || (connectionMode === 'server' && !isMine)}
+                    disabled={loggingRegen || loggingAction !== null || resettingAction !== null || !canEditTimers}
                     className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
                     title="Log one regeneration attempt"
                   >
@@ -638,9 +732,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                       const log = latestTimerLogs[step.action];
                       const isLogged = Boolean(log);
                       const isSaving = loggingAction === step.action;
+                      const isResetting = resettingAction === step.action;
                       const previousStep = index > 0 ? TIMER_STEPS[index - 1] : null;
                       const isLocked = Boolean(previousStep && !latestTimerLogs[previousStep.action]);
-                      const disabled = loggingAction !== null || isLogged || isLocked || (connectionMode === 'server' && !isMine);
+                      const canReset = isLogged && canEditTimers && loggingAction === null && resettingAction === null;
+                      const disabled = loggingAction !== null || resettingAction !== null || isLogged || isLocked || !canEditTimers;
                       const tooltip = isLocked
                         ? 'Complete the previous timer step first'
                         : isLogged
@@ -648,25 +744,35 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                           : step.lastAction;
 
                       return (
-                        <button
-                          key={step.action}
-                          onClick={() => handleTimerAction(step.action)}
-                          disabled={disabled}
-                          title={tooltip}
-                          className={`min-h-[34px] min-w-0 rounded-md border px-1 py-0.5 text-center transition-colors disabled:cursor-not-allowed ${
-                            isLogged
-                              ? 'border-green-200 bg-green-50 text-green-700'
-                              : 'border-gray-200 bg-white text-gray-600 hover:border-blue-200 hover:bg-blue-50'
-                          } ${isLocked || (connectionMode === 'server' && !isMine) || (loggingAction !== null && !isSaving) ? 'opacity-60' : ''}`}
-                        >
-                          <span className="flex items-center justify-center gap-1 text-[8px] font-bold uppercase leading-none">
-                            {isLogged ? <Check size={10} /> : <Clock size={10} />}
-                            <span className="truncate">{isSaving ? 'Save' : step.shortLabel}</span>
-                          </span>
-                          <span className={`mt-0.5 block truncate font-mono text-[8px] leading-none ${isLogged ? 'text-green-700' : 'text-gray-400'}`}>
-                            {formatTimerClock(log?.createdAt) || '--:--'}
-                          </span>
-                        </button>
+                        <div key={step.action} className="relative">
+                          <button
+                            onClick={() => handleTimerAction(step.action)}
+                            disabled={disabled}
+                            title={tooltip}
+                            className={`min-h-[34px] min-w-0 w-full rounded-md border px-1 py-0.5 text-center transition-colors disabled:cursor-not-allowed ${
+                              isLogged
+                                ? 'border-green-200 bg-green-50 text-green-700'
+                                : 'border-gray-200 bg-white text-gray-600 hover:border-blue-200 hover:bg-blue-50'
+                            } ${isLocked || !canEditTimers || ((loggingAction !== null || resettingAction !== null) && !isSaving && !isResetting) ? 'opacity-60' : ''}`}
+                          >
+                            <span className="flex items-center justify-center gap-1 text-[8px] font-bold uppercase leading-none">
+                              {isLogged ? <Check size={10} /> : <Clock size={10} />}
+                              <span className="truncate">{isSaving ? 'Save' : isResetting ? 'Reset' : step.shortLabel}</span>
+                            </span>
+                            <span className={`mt-0.5 block truncate font-mono text-[8px] leading-none ${isLogged ? 'text-green-700' : 'text-gray-400'}`}>
+                              {formatTimerClock(log?.createdAt) || '--:--'}
+                            </span>
+                          </button>
+                          {canReset && (
+                            <button
+                              onClick={() => handleResetTimerAction(step.action)}
+                              className="absolute -right-1 -top-1 rounded-full border border-gray-200 bg-white p-0.5 text-gray-500 shadow-sm hover:text-blue-700"
+                              title={`Reset ${step.label}`}
+                            >
+                              <Undo2 size={9} />
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
                   </div>

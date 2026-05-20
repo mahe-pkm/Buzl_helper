@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Clock, RotateCcw } from 'lucide-react';
+import { Check, Clock, RotateCcw, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '../utils/api';
 import type { Product, ProductActionLog, TimerAction } from '../types';
@@ -71,6 +71,7 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
   variant = 'stack',
 }) => {
   const [savingAction, setSavingAction] = useState<TimerAction | null>(null);
+  const [resettingAction, setResettingAction] = useState<TimerAction | null>(null);
   const [savingRegen, setSavingRegen] = useState(false);
   const [nowTick, setNowTick] = useState<number | null>(null);
 
@@ -166,6 +167,28 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
     }
   };
 
+  const handleResetTimerAction = async (action: TimerAction) => {
+    if (!canEdit) {
+      toast.error('Only the assigned worker or admin can edit this timer');
+      return;
+    }
+
+    const step = TIMER_STEPS.find((item) => item.action === action);
+    setResettingAction(action);
+    try {
+      const updated = await fetchWithAuth(`/products/${product.id}/logs`, {
+        method: 'DELETE',
+        body: JSON.stringify({ action }),
+      });
+      onProductUpdated(updated);
+      toast.success(`${step?.label || 'Timer'} reset`);
+    } catch (error: any) {
+      toast.error(error.message || 'Timer reset failed');
+    } finally {
+      setResettingAction(null);
+    }
+  };
+
   const containerClass =
     variant === 'rail'
       ? 'flex flex-col gap-1'
@@ -193,9 +216,11 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
           const log = latestLogs[step.action];
           const isLogged = Boolean(log);
           const isSaving = savingAction === step.action;
+          const isResetting = resettingAction === step.action;
           const previousStep = index > 0 ? TIMER_STEPS[index - 1] : null;
           const isLocked = Boolean(previousStep && !latestLogs[previousStep.action]);
-          const disabled = savingAction !== null || isLogged || isLocked || !canEdit;
+          const canReset = isLogged && canEdit && savingAction === null && resettingAction === null && !savingRegen;
+          const disabled = savingAction !== null || resettingAction !== null || isLogged || isLocked || !canEdit || savingRegen;
           const tooltip = !canEdit
             ? 'Assigned worker or admin only'
             : isLocked
@@ -205,26 +230,37 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
                 : step.lastAction;
 
           return (
-            <button
-              key={step.action}
-              type="button"
-              onClick={() => handleTimerAction(step.action)}
-              disabled={disabled}
-              title={tooltip}
-              className={`${buttonClass} ${
-                isLogged
-                  ? 'border-green-200 bg-green-50 text-green-700'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-blue-200 hover:bg-blue-50'
-              } ${!canEdit || isLocked || (savingAction !== null && !isSaving) ? 'opacity-60' : ''}`}
-            >
-              <span className="flex items-center justify-center gap-0.5 text-[9px] font-bold uppercase leading-none">
-                {isLogged ? <Check size={9} /> : <Clock size={9} />}
-                <span className="truncate">{isSaving ? 'Save' : step.shortLabel}</span>
-              </span>
-              <span className={`mt-0.5 block truncate font-mono text-[8px] leading-none ${isLogged ? 'text-green-700' : 'text-gray-400'}`}>
-                {formatShortTime(log?.createdAt)}
-              </span>
-            </button>
+            <div key={step.action} className="relative">
+              <button
+                type="button"
+                onClick={() => handleTimerAction(step.action)}
+                disabled={disabled}
+                title={tooltip}
+                className={`${buttonClass} ${
+                  isLogged
+                    ? 'border-green-200 bg-green-50 text-green-700'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-blue-200 hover:bg-blue-50'
+                } ${!canEdit || isLocked || ((savingAction !== null || resettingAction !== null) && !isSaving && !isResetting) ? 'opacity-60' : ''}`}
+              >
+                <span className="flex items-center justify-center gap-0.5 text-[9px] font-bold uppercase leading-none">
+                  {isLogged ? <Check size={9} /> : <Clock size={9} />}
+                  <span className="truncate">{isSaving ? 'Save' : isResetting ? 'Reset' : step.shortLabel}</span>
+                </span>
+                <span className={`mt-0.5 block truncate font-mono text-[8px] leading-none ${isLogged ? 'text-green-700' : 'text-gray-400'}`}>
+                  {formatShortTime(log?.createdAt)}
+                </span>
+              </button>
+              {canReset && (
+                <button
+                  type="button"
+                  onClick={() => handleResetTimerAction(step.action)}
+                  className="absolute -right-1 -top-1 rounded-full border border-gray-200 bg-white p-0.5 text-gray-500 shadow-sm hover:text-blue-700"
+                  title={`Reset ${step.label}`}
+                >
+                  <Undo2 size={9} />
+                </button>
+              )}
+            </div>
           );
         })}
       </div>
@@ -243,7 +279,7 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
       <button
         type="button"
         onClick={handleRegeneration}
-        disabled={!canEdit || savingRegen || savingAction !== null}
+        disabled={!canEdit || savingRegen || savingAction !== null || resettingAction !== null}
         title="Log one regeneration attempt"
         className={`${regenButtonClass} ${!canEdit ? 'opacity-60' : ''}`}
       >

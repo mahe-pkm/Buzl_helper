@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import { LogOut, ExternalLink, Copy, CheckCircle2, Clock, Circle, Search, RefreshCw, MessageSquare, X, Check, Package, User, Download } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { LogOut, ExternalLink, Copy, CheckCircle2, Clock, Circle, Search, RefreshCw, MessageSquare, X, Check, Package, User, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCsvStore } from '../store/useCsvStore';
 import { fetchWithAuth } from '../utils/api';
 import type { Product } from '../types';
 import { TaskTimer } from './TaskTimer';
+import { buildThumbnailCandidates } from '../utils/driveThumbnail';
 
 type WorkerTab = 'mine' | 'all';
 
@@ -18,6 +19,7 @@ export const WorkerView: React.FC = () => {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -158,9 +160,31 @@ export const WorkerView: React.FC = () => {
     return product.assignee?.username || 'Worker';
   };
 
-  const TaskCard = ({ product, isOwn }: { product: Product; isOwn: boolean }) => (
-    <div className={`bg-white px-3 py-3 border-b border-gray-100 ${product.status === 'completed' ? 'opacity-60' : ''}`}>
-      <div className="flex gap-2.5">
+  const expandedSet = useMemo(() => new Set(expandedIds), [expandedIds]);
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => (
+      prev.includes(id)
+        ? prev.filter((value) => value !== id)
+        : [...prev, id]
+    ));
+  };
+
+  const TaskCard = ({ product, isOwn }: { product: Product; isOwn: boolean }) => {
+    const isExpanded = expandedSet.has(product.id);
+    const thumbnailCandidates = useMemo(
+      () => buildThumbnailCandidates(product.thumbnail_url, product.drive_folder),
+      [product.thumbnail_url, product.drive_folder],
+    );
+    const [thumbnailIndex, setThumbnailIndex] = useState(0);
+    const thumbnailSrc = thumbnailCandidates[thumbnailIndex] || null;
+
+    useEffect(() => {
+      setThumbnailIndex(0);
+    }, [product.id, thumbnailCandidates.join('|')]);
+
+    return (
+    <div className={`bg-white px-3 py-2 border-b border-gray-100 ${product.status === 'completed' ? 'opacity-70' : ''}`}>
+      <div className="flex gap-2.5 rounded-xl border border-gray-200 bg-white p-2.5 shadow-sm">
         {/* Status icon — only clickable for own tasks */}
         <div className="w-12 flex-shrink-0 sm:w-14">
         {isOwn ? (
@@ -174,16 +198,19 @@ export const WorkerView: React.FC = () => {
           <div className="mb-1 flex h-6 w-12 items-center justify-center">{statusIcon(product)}</div>
         )}
         
-        {product.thumbnail_url && (
-          <img src={product.thumbnail_url} alt="Preview" className="mb-1.5 h-10 w-12 rounded-md object-cover border border-gray-200 bg-white" />
+        {thumbnailSrc ? (
+          <img
+            src={thumbnailSrc}
+            alt="Preview"
+            className="mb-1.5 h-10 w-12 rounded-md object-cover border border-gray-200 bg-white"
+            onError={() => setThumbnailIndex((prev) => (prev < thumbnailCandidates.length - 1 ? prev + 1 : prev))}
+          />
+        ) : (
+          <div className="mb-1.5 flex h-10 w-12 items-center justify-center rounded-md border border-gray-200 bg-gray-50 text-[9px] font-semibold text-gray-400">
+            IMG
+          </div>
         )}
 
-          <TaskTimer
-            product={product}
-            canEdit={isOwn}
-            onProductUpdated={handleTimerProductUpdated}
-            variant="rail"
-          />
         </div>
 
         <div className="flex-1 min-w-0">
@@ -196,6 +223,13 @@ export const WorkerView: React.FC = () => {
               {statusBadge(product.status)}
               <button onClick={() => { navigator.clipboard.writeText(product.product_name); toast.success('Copied!'); }} className="text-gray-400 hover:text-gray-600 p-0.5">
                 <Copy size={11} />
+              </button>
+              <button
+                onClick={() => toggleExpanded(product.id)}
+                className="text-gray-400 hover:text-gray-700 p-0.5"
+                title={isExpanded ? 'Collapse details' : 'Expand details'}
+              >
+                {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               </button>
             </div>
           </div>
@@ -218,58 +252,82 @@ export const WorkerView: React.FC = () => {
             </p>
           )}
 
-          {/* Drive Folder */}
-          {product.drive_folder && (
-            <div className="mt-1.5 flex items-center justify-between text-xs bg-blue-50 px-2 py-1.5 rounded-lg border border-blue-100">
-              <span className="font-medium text-blue-800 text-[11px] truncate pr-2 max-w-[42vw] sm:max-w-[160px]" title={product.drive_folder}>Drive Folder</span>
-              <div className="flex gap-1 flex-shrink-0">
-                <button onClick={() => window.open(product.drive_folder, '_blank')} className="p-1 rounded text-blue-600 hover:bg-blue-100"><ExternalLink size={12} /></button>
-                <button onClick={() => { navigator.clipboard.writeText(product.drive_folder); toast.success('Copied!'); }} className="p-1 rounded text-blue-600 hover:bg-blue-100"><Copy size={12} /></button>
-              </div>
-            </div>
-          )}
-
-          {/* Reference Link */}
-          {product.reference_link && (
-            <div className="mt-1 flex items-center justify-between text-xs bg-purple-50 px-2 py-1.5 rounded-lg border border-purple-100">
-              <span className="font-medium text-purple-800 text-[11px] truncate pr-2 max-w-[42vw] sm:max-w-[160px]" title={product.reference_link}>Reference Link</span>
-              <div className="flex gap-1 flex-shrink-0">
-                <button onClick={() => window.open(product.reference_link!, '_blank')} className="p-1 rounded text-purple-600 hover:bg-purple-100"><ExternalLink size={12} /></button>
-                <button onClick={() => { navigator.clipboard.writeText(product.reference_link!); toast.success('Copied!'); }} className="p-1 rounded text-purple-600 hover:bg-purple-100"><Copy size={12} /></button>
-              </div>
-            </div>
-          )}
-
-          {/* Claim button for unassigned */}
-          {!product.assigned_to && (
-            <button onClick={() => handleClaim(product)} disabled={claimingId === product.id}
-              className="mt-1.5 w-full text-[11px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg py-1 transition-colors disabled:opacity-50">
+          {!isExpanded && !product.assigned_to && (
+            <button
+              onClick={() => handleClaim(product)}
+              disabled={claimingId === product.id}
+              className="mt-2 inline-flex rounded-lg border border-amber-300 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+            >
               {claimingId === product.id ? 'Claiming...' : '+ Claim this task'}
             </button>
           )}
 
-          {/* Notes (own tasks only) */}
-          {isOwn && (
-            editingNoteId === product.id ? (
-              <div className="mt-1.5 flex gap-1">
-                <input autoFocus value={noteText} onChange={e => setNoteText(e.target.value)}
-                  placeholder="Add a note..." onKeyDown={e => e.key === 'Enter' && handleSaveNote(product.id)}
-                  className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                <button onClick={() => handleSaveNote(product.id)} className="p-1.5 text-green-600 hover:bg-green-50 rounded"><Check size={13} /></button>
-                <button onClick={() => setEditingNoteId(null)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"><X size={13} /></button>
+          {isExpanded && (
+            <div className="mt-2 border-t border-gray-100 pt-2 space-y-2">
+              {/* Drive Folder */}
+              {product.drive_folder && (
+                <div className="flex items-center justify-between text-xs bg-blue-50 px-2 py-1.5 rounded-lg border border-blue-100">
+                  <span className="font-medium text-blue-800 text-[11px] truncate pr-2 max-w-[42vw] sm:max-w-[160px]" title={product.drive_folder}>Drive Folder</span>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button onClick={() => window.open(product.drive_folder, '_blank')} className="p-1 rounded text-blue-600 hover:bg-blue-100"><ExternalLink size={12} /></button>
+                    <button onClick={() => { navigator.clipboard.writeText(product.drive_folder); toast.success('Copied!'); }} className="p-1 rounded text-blue-600 hover:bg-blue-100"><Copy size={12} /></button>
+                  </div>
+                </div>
+              )}
+
+              {/* Reference Link */}
+              {product.reference_link && (
+                <div className="flex items-center justify-between text-xs bg-purple-50 px-2 py-1.5 rounded-lg border border-purple-100">
+                  <span className="font-medium text-purple-800 text-[11px] truncate pr-2 max-w-[42vw] sm:max-w-[160px]" title={product.reference_link}>Reference Link</span>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button onClick={() => window.open(product.reference_link!, '_blank')} className="p-1 rounded text-purple-600 hover:bg-purple-100"><ExternalLink size={12} /></button>
+                    <button onClick={() => { navigator.clipboard.writeText(product.reference_link!); toast.success('Copied!'); }} className="p-1 rounded text-purple-600 hover:bg-purple-100"><Copy size={12} /></button>
+                  </div>
+                </div>
+              )}
+
+              {/* Claim button for unassigned */}
+              {!product.assigned_to && (
+                <button onClick={() => handleClaim(product)} disabled={claimingId === product.id}
+                  className="w-full text-[11px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg py-1 transition-colors disabled:opacity-50">
+                  {claimingId === product.id ? 'Claiming...' : '+ Claim this task'}
+                </button>
+              )}
+
+              {/* Notes (own tasks only) */}
+              {isOwn && (
+                editingNoteId === product.id ? (
+                  <div className="flex gap-1">
+                    <input autoFocus value={noteText} onChange={e => setNoteText(e.target.value)}
+                      placeholder="Add a note..." onKeyDown={e => e.key === 'Enter' && handleSaveNote(product.id)}
+                      className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    <button onClick={() => handleSaveNote(product.id)} className="p-1.5 text-green-600 hover:bg-green-50 rounded"><Check size={13} /></button>
+                    <button onClick={() => setEditingNoteId(null)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded"><X size={13} /></button>
+                  </div>
+                ) : (
+                  <button onClick={() => { setEditingNoteId(product.id); setNoteText(product.notes || ''); }}
+                    className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600">
+                    <MessageSquare size={10} />
+                    {product.notes ? <span className="truncate max-w-[52vw] italic sm:max-w-[220px]">{product.notes}</span> : 'Add note'}
+                  </button>
+                )
+              )}
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-2">
+                <TaskTimer
+                  product={product}
+                  canEdit={isOwn}
+                  onProductUpdated={handleTimerProductUpdated}
+                  variant="row"
+                />
               </div>
-            ) : (
-              <button onClick={() => { setEditingNoteId(product.id); setNoteText(product.notes || ''); }}
-                className="mt-1.5 flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600">
-                <MessageSquare size={10} />
-                {product.notes ? <span className="truncate max-w-[52vw] italic sm:max-w-[220px]">{product.notes}</span> : 'Add note'}
-              </button>
-            )
+            </div>
           )}
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   const filtered = activeTab === 'mine' ? mineFiltered : allFiltered;
   const mineAssignedFiltered = mineFiltered.filter((p) => p.assigned_to === authUser?.id);
@@ -296,19 +354,19 @@ export const WorkerView: React.FC = () => {
       </header>
 
       {/* Progress bar — shows based on active tab */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3">
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 px-3 py-2.5">
         {activeTab === 'mine' ? (
           <>
-            <div className="flex flex-wrap justify-between items-end gap-2 mb-1.5">
+            <div className="flex flex-wrap justify-between items-end gap-2 mb-1">
               <div>
-                <span className="text-2xl font-bold text-gray-900 leading-none">{stats.pct}%</span>
+                <span className="text-xl font-bold text-gray-900 leading-none">{stats.pct}%</span>
                 <span className="text-xs text-gray-400 ml-1.5">my progress</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-right sm:flex sm:gap-3">
-                <div><p className="text-base font-bold text-green-600">{stats.done}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Done</p></div>
-                <div><p className="text-base font-bold text-blue-500">{stats.inProgress}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Doing</p></div>
-                <div><p className="text-base font-bold text-gray-500">{stats.pending}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Left</p></div>
-                <div><p className="text-base font-bold text-gray-700">{stats.total}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Mine</p></div>
+              <div className="grid grid-cols-4 gap-2 text-right">
+                <div><p className="text-sm font-bold text-green-600">{stats.done}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Done</p></div>
+                <div><p className="text-sm font-bold text-blue-500">{stats.inProgress}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Doing</p></div>
+                <div><p className="text-sm font-bold text-gray-500">{stats.pending}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Left</p></div>
+                <div><p className="text-sm font-bold text-gray-700">{stats.total}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Mine</p></div>
               </div>
             </div>
             <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
@@ -317,16 +375,16 @@ export const WorkerView: React.FC = () => {
           </>
         ) : (
           <>
-            <div className="flex flex-wrap justify-between items-end gap-2 mb-1.5">
+            <div className="flex flex-wrap justify-between items-end gap-2 mb-1">
               <div>
-                <span className="text-2xl font-bold text-gray-900 leading-none">{globalStats.pct}%</span>
+                <span className="text-xl font-bold text-gray-900 leading-none">{globalStats.pct}%</span>
                 <span className="text-xs text-gray-400 ml-1.5">overall done</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-right sm:flex sm:gap-3">
-                <div><p className="text-base font-bold text-green-600">{globalStats.done}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Done</p></div>
-                <div><p className="text-base font-bold text-blue-500">{globalStats.inProgress}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Doing</p></div>
-                <div><p className="text-base font-bold text-amber-500">{globalStats.unassigned}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Free</p></div>
-                <div><p className="text-base font-bold text-gray-700">{globalStats.total}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Total</p></div>
+              <div className="grid grid-cols-4 gap-2 text-right">
+                <div><p className="text-sm font-bold text-green-600">{globalStats.done}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Done</p></div>
+                <div><p className="text-sm font-bold text-blue-500">{globalStats.inProgress}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Doing</p></div>
+                <div><p className="text-sm font-bold text-amber-500">{globalStats.unassigned}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Free</p></div>
+                <div><p className="text-sm font-bold text-gray-700">{globalStats.total}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Total</p></div>
               </div>
             </div>
             <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
@@ -350,7 +408,7 @@ export const WorkerView: React.FC = () => {
       </div>
 
       {/* Search & Status Filter */}
-      <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200 px-3 py-2 flex flex-col gap-2">
+      <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200 px-3 py-2 flex flex-col gap-1.5">
         <div className="relative">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input

@@ -25,7 +25,7 @@ function App() {
 
   if (!authUser) {
     return (
-      <div className="w-[420px] h-screen">
+      <div className="w-full min-h-[100dvh] bg-gray-50">
         <Toaster position="top-center" richColors />
         <Login />
       </div>
@@ -42,7 +42,7 @@ function App() {
   }
 
   return (
-    <div className="w-[420px] h-screen">
+    <div className="w-full min-h-[100dvh] bg-gray-50">
       <Toaster position="top-center" richColors />
       <WorkerView />
     </div>

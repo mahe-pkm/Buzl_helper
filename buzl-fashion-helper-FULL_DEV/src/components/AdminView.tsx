@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { LogOut, RefreshCw, Users, Package, Search, Upload, UserPlus, Trash2, KeyRound, CheckCircle2, X, Download, AlertTriangle, ExternalLink, Copy, MessageSquare, Clock, ChevronRight } from 'lucide-react';
 import { exportCSV } from '../utils/csvParser';
 import { toast } from 'sonner';
@@ -6,8 +6,11 @@ import { useCsvStore } from '../store/useCsvStore';
 import { fetchWithAuth } from '../utils/api';
 import { parseCSV } from '../utils/csvParser';
 import type { Product } from '../types';
+import { TaskTimer } from './TaskTimer';
 
 type Tab = 'products' | 'users';
+const LAST_DRIVE_LINK_KEY = 'buzl_last_drive_link';
+const LAST_REFERENCE_LINK_KEY = 'buzl_last_reference_link';
 
 export const AdminView: React.FC = () => {
   const { authUser, logout, products, workers, setProducts, setWorkers, updateProduct } = useCsvStore();
@@ -22,7 +25,7 @@ export const AdminView: React.FC = () => {
   const [bulkWorker, setBulkWorker] = useState('');
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
-  const [globalRefLink, setGlobalRefLink] = useState('');
+  const [globalRefLink, setGlobalRefLink] = useState(() => localStorage.getItem(LAST_REFERENCE_LINK_KEY) || '');
   
   // Sorting & Pagination State
   const [pageSize, setPageSize] = useState<number | 'ALL'>(20);
@@ -35,7 +38,7 @@ export const AdminView: React.FC = () => {
   // Drive Import State
   const [driveImportOpen, setDriveImportOpen] = useState(false);
   const [driveImportStep, setDriveImportStep] = useState(1); // 1 = input, 2 = review
-  const [driveUrl, setDriveUrl] = useState('');
+  const [driveUrl, setDriveUrl] = useState(() => localStorage.getItem(LAST_DRIVE_LINK_KEY) || '');
   const [driveRecursive, setDriveRecursive] = useState(false);
   const [driveImporting, setDriveImporting] = useState(false);
   const [driveLog, setDriveLog] = useState<string[]>([]);
@@ -44,6 +47,36 @@ export const AdminView: React.FC = () => {
   const askConfirm = (message: string, onConfirm: () => void) => {
     setConfirmDialog({ isOpen: true, message, onConfirm });
   };
+
+  const applyLastUsedLinks = () => {
+    const latestProductDrive = products.find((p) => Boolean(p.drive_folder))?.drive_folder || '';
+    const latestProductReference = products.find((p) => Boolean(p.reference_link))?.reference_link || '';
+    const lastDrive = localStorage.getItem(LAST_DRIVE_LINK_KEY) || latestProductDrive;
+    const lastReference = localStorage.getItem(LAST_REFERENCE_LINK_KEY) || latestProductReference;
+
+    if (!lastDrive && !lastReference) {
+      toast.info('No last used Drive links found');
+      return;
+    }
+
+    setDriveUrl(lastDrive);
+    setGlobalRefLink(lastReference);
+    if (lastDrive) localStorage.setItem(LAST_DRIVE_LINK_KEY, lastDrive);
+    if (lastReference) localStorage.setItem(LAST_REFERENCE_LINK_KEY, lastReference);
+    toast.success('Loaded Drive and reference links');
+  };
+
+  useEffect(() => {
+    const clean = driveUrl.trim();
+    if (clean) localStorage.setItem(LAST_DRIVE_LINK_KEY, clean);
+    else localStorage.removeItem(LAST_DRIVE_LINK_KEY);
+  }, [driveUrl]);
+
+  useEffect(() => {
+    const clean = globalRefLink.trim();
+    if (clean) localStorage.setItem(LAST_REFERENCE_LINK_KEY, clean);
+    else localStorage.removeItem(LAST_REFERENCE_LINK_KEY);
+  }, [globalRefLink]);
 
   // User management state
   const [newUsername, setNewUsername] = useState('');
@@ -94,7 +127,14 @@ export const AdminView: React.FC = () => {
     e.preventDefault();
     if (!driveUrl) return;
 
-    let folderId = driveUrl.trim();
+    const cleanDriveUrl = driveUrl.trim();
+    const cleanRefLink = globalRefLink.trim();
+    if (cleanDriveUrl) localStorage.setItem(LAST_DRIVE_LINK_KEY, cleanDriveUrl);
+    else localStorage.removeItem(LAST_DRIVE_LINK_KEY);
+    if (cleanRefLink) localStorage.setItem(LAST_REFERENCE_LINK_KEY, cleanRefLink);
+    else localStorage.removeItem(LAST_REFERENCE_LINK_KEY);
+
+    let folderId = cleanDriveUrl;
     const folderMatch = driveUrl.match(/folder[s]?\/([a-zA-Z0-9-_]+)/);
     const idMatch = driveUrl.match(/id=([a-zA-Z0-9-_]+)/);
     const dMatch = driveUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
@@ -287,6 +327,10 @@ export const AdminView: React.FC = () => {
     } catch { toast.error('Status update failed'); }
   };
 
+  const handleTimerProductUpdated = (updated: Product) => {
+    setProducts(products.map(p => p.id === updated.id ? { ...p, ...updated } : p));
+  };
+
   const toggleSelect = (id: string) => setSelectedIds(prev => {
     const s = new Set(prev);
     if (s.has(id)) {
@@ -410,7 +454,7 @@ export const AdminView: React.FC = () => {
   const copyText = (text: string, label = 'Copied!') => { navigator.clipboard.writeText(text); toast.success(label); };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col relative" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="min-h-[100dvh] bg-gray-100 flex flex-col relative" style={{ fontFamily: "'Inter', sans-serif" }}>
       
       {/* Custom Confirm Dialog */}
       {confirmDialog && (
@@ -453,6 +497,17 @@ export const AdminView: React.FC = () => {
                   <label className="text-xs font-semibold text-gray-600 mb-1 block">Global Reference Link (Optional)</label>
                   <input type="text" placeholder="Applied to all imported folders" value={globalRefLink} onChange={e => setGlobalRefLink(e.target.value)} disabled={driveImporting}
                     className="w-full text-sm p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="flex justify-start">
+                  <button
+                    type="button"
+                    onClick={applyLastUsedLinks}
+                    disabled={driveImporting}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                  >
+                    <Clock size={12} />
+                    Use Last Used Links
+                  </button>
                 </div>
                 <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
                   <input type="checkbox" checked={driveRecursive} onChange={e => setDriveRecursive(e.target.checked)} disabled={driveImporting} className="rounded text-blue-600 focus:ring-blue-500" />
@@ -532,17 +587,17 @@ export const AdminView: React.FC = () => {
       )}
 
       {/* Top Nav */}
-      <header className="bg-gray-900 text-white px-6 py-3 flex items-center justify-between shadow-lg flex-shrink-0">
-        <div className="flex items-center gap-3">
+      <header className="bg-gray-900 text-white px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2 shadow-lg flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="bg-white/10 p-2 rounded-lg">
             <Package size={18} />
           </div>
           <div>
             <h1 className="font-bold text-base leading-none">Buzl Admin</h1>
-            <p className="text-xs text-white/50 mt-0.5">Fashion Helper Control Panel</p>
+            <p className="text-xs text-white/50 mt-0.5 hidden sm:block">Fashion Helper Control Panel</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <a href="/buzl-fashion-helper.zip" download className="flex items-center gap-1.5 text-xs text-white/70 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors font-semibold">
             <Download size={13} /> Download Extension
           </a>
@@ -562,7 +617,7 @@ export const AdminView: React.FC = () => {
       </header>
 
       {/* Stats Cards */}
-      <div className="px-6 pt-5 pb-4 grid grid-cols-6 gap-3 flex-shrink-0">
+      <div className="px-3 sm:px-6 pt-4 sm:pt-5 pb-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 flex-shrink-0">
         {[
           { label: 'Total Products', value: stats.total, color: 'bg-white', text: 'text-gray-800', sub: 'text-gray-400' },
           { label: 'Completed', value: stats.completed, color: 'bg-green-50', text: 'text-green-700', sub: 'text-green-400' },
@@ -579,7 +634,7 @@ export const AdminView: React.FC = () => {
       </div>
 
       {/* Tab Bar */}
-      <div className="px-6 flex gap-1 flex-shrink-0">
+      <div className="px-3 sm:px-6 flex gap-1 flex-shrink-0 overflow-x-auto">
         {([['products', Package, 'Products'], ['users', Users, 'User Management']] as const).map(([key, Icon, label]) => (
           <button key={key} onClick={() => setTab(key as Tab)}
             className={`flex items-center gap-2 px-5 py-2.5 rounded-t-lg text-sm font-semibold transition-colors ${tab === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-white/60'}`}>
@@ -589,7 +644,7 @@ export const AdminView: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 px-6 pb-6">
+      <div className="flex-1 px-3 sm:px-6 pb-6">
         <div className="bg-white rounded-b-xl rounded-tr-xl shadow-sm border border-gray-100 overflow-hidden" style={{ minHeight: '500px' }}>
 
           {/* ===== PRODUCTS TAB ===== */}
@@ -597,7 +652,7 @@ export const AdminView: React.FC = () => {
             <div className="flex flex-col h-full">
               {/* Toolbar */}
               <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-3">
+                <div className="flex w-full flex-wrap items-center gap-3 xl:w-auto">
                   <div className="flex flex-col gap-1">
                     <label className={`flex items-center gap-1.5 px-3 py-2 text-sm font-semibold border-2 border-dashed border-gray-300 rounded-lg text-gray-600 cursor-pointer hover:bg-gray-50 hover:border-blue-400 hover:text-blue-600 transition-colors ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
                       {uploading ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
@@ -608,7 +663,7 @@ export const AdminView: React.FC = () => {
                   </div>
                   
                   {/* Drive Import Button */}
-                  <button onClick={() => { setDriveLog([]); setDriveUrl(''); setDriveImportStep(1); setDriveImportOpen(true); }} className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold bg-[#E8F0FE] text-[#1967D2] rounded-lg hover:bg-[#D2E3FC] transition-colors border border-[#D2E3FC]">
+                  <button onClick={() => { setDriveLog([]); setDriveImportStep(1); setDriveImportOpen(true); }} className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold bg-[#E8F0FE] text-[#1967D2] rounded-lg hover:bg-[#D2E3FC] transition-colors border border-[#D2E3FC]">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
                     Import Drive Folder
                   </button>
@@ -620,10 +675,10 @@ export const AdminView: React.FC = () => {
                   </label>
                   <div className="h-6 w-px bg-gray-200 mx-1"></div>
                   <input type="text" placeholder="Global Reference Link (Optional)" value={globalRefLink} onChange={e => setGlobalRefLink(e.target.value)}
-                    className="text-xs border border-gray-200 rounded-lg px-3 py-2 min-w-[200px] focus:outline-none focus:ring-1 focus:ring-blue-500" title="Applied to all imported products without a reference link" />
+                    className="text-xs border border-gray-200 rounded-lg px-3 py-2 w-full sm:w-auto sm:min-w-[200px] focus:outline-none focus:ring-1 focus:ring-blue-500" title="Applied to all imported products without a reference link" />
                 </div>
                 {/* Search */}
-                <div className="flex-1 relative min-w-[200px]">
+                <div className="relative w-full xl:flex-1 xl:min-w-[220px]">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input type="text" placeholder="Search products..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                     className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -641,7 +696,7 @@ export const AdminView: React.FC = () => {
                   {onlyWorkers.map(w => <option key={w.id} value={w.id}>{w.username}</option>)}
                 </select>
                 {/* Right actions */}
-                <div className="flex items-center gap-2 ml-auto">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
                   <span className="text-xs text-gray-400">{filteredAndSorted.length}/{products.length}</span>
                   <button onClick={() => exportCSV(products)} className="flex items-center gap-1.5 text-xs bg-gray-100 hover:bg-green-50 text-gray-600 hover:text-green-700 px-3 py-2 rounded-lg transition-colors font-semibold">
                     <Download size={14} /> Export CSV
@@ -681,7 +736,7 @@ export const AdminView: React.FC = () => {
               ) : (
                 <>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="min-w-[1080px] w-full text-sm">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-100">
                         <th className="px-3 py-3"><input type="checkbox" checked={selectedIds.size === filteredAndSorted.length && filteredAndSorted.length > 0} onChange={toggleSelectAll} className="rounded" /></th>
@@ -694,6 +749,7 @@ export const AdminView: React.FC = () => {
                         <th className="text-left px-3 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide cursor-pointer hover:bg-gray-100 select-none" onClick={() => requestSort('status')}>
                           Status {sortConfig?.key === 'status' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                         </th>
+                        <th className="text-left px-3 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Timers</th>
                         <th className="text-left px-3 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Assign To</th>
                         <th className="text-left px-3 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Notes</th>
                         <th className="text-left px-3 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide cursor-pointer hover:bg-gray-100 select-none" onClick={() => requestSort('last_action')}>
@@ -746,7 +802,16 @@ export const AdminView: React.FC = () => {
                             </select>
                           </td>
                           <td className="px-3 py-2.5">
+                            <TaskTimer
+                              product={product}
+                              canEdit={true}
+                              onProductUpdated={handleTimerProductUpdated}
+                              variant="row"
+                            />
+                          </td>
+                          <td className="px-3 py-2.5">
                             <div className="flex items-center gap-1">
+                              <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${product.assigned_to ? 'bg-blue-500' : 'bg-amber-500'}`} title={product.assigned_to ? 'Assigned' : 'Unassigned'} />
                               <select value={product.assigned_to || 'unassigned'} onChange={e => handleAssign(product.id, e.target.value)} disabled={assigningId === product.id}
                                 className={`text-xs py-1.5 px-2 border rounded-lg bg-white focus:outline-none min-w-[110px] ${product.assigned_to ? 'border-blue-200 text-blue-700 bg-blue-50' : 'border-gray-200 text-gray-500'}`}>
                                 <option value="unassigned">— Unassigned —</option>
@@ -789,7 +854,7 @@ export const AdminView: React.FC = () => {
                 </div>
 
                 {/* Pagination Controls */}
-                <div className="p-3 border-t border-gray-100 flex items-center justify-between bg-gray-50 rounded-b-xl">
+                <div className="p-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2 bg-gray-50 rounded-b-xl">
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500 font-medium">Rows per page:</span>
                     <select value={pageSize} onChange={e => {
@@ -823,9 +888,9 @@ export const AdminView: React.FC = () => {
 
           {/* ===== USER MANAGEMENT TAB ===== */}
           {tab === 'users' && (
-            <div className="flex gap-0 h-full">
+            <div className="flex gap-0 h-full flex-col lg:flex-row">
               {/* Left: Create Form */}
-              <div className="w-80 flex-shrink-0 border-r border-gray-100 p-6">
+              <div className="w-full lg:w-80 flex-shrink-0 border-b lg:border-b-0 lg:border-r border-gray-100 p-4 sm:p-6">
                 <h3 className="font-bold text-gray-800 mb-1 flex items-center gap-2"><UserPlus size={16} /> Create User</h3>
                 <p className="text-xs text-gray-400 mb-4">New users can log in using these credentials.</p>
                 <form onSubmit={handleCreateUser} className="flex flex-col gap-3">
@@ -856,7 +921,7 @@ export const AdminView: React.FC = () => {
               </div>
 
               {/* Right: Worker Table */}
-              <div className="flex-1 p-6">
+              <div className="flex-1 p-4 sm:p-6">
                 <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Users size={16} /> All Users ({workers.length})</h3>
                 {workers.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20 text-gray-400">
@@ -866,7 +931,7 @@ export const AdminView: React.FC = () => {
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-xl border border-gray-100">
-                    <table className="w-full text-sm">
+                    <table className="min-w-[760px] w-full text-sm">
                       <thead>
                         <tr className="bg-gray-50 border-b border-gray-100">
                           <th className="text-left px-4 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">User</th>

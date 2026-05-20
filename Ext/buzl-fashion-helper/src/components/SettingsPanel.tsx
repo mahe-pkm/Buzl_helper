@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Server, Wifi, WifiOff, X, KeyRound, Globe, User, LogOut, Check } from 'lucide-react';
+import { Shield, Server, Wifi, WifiOff, X, KeyRound, Globe, User, LogOut, Check, Eye, EyeOff } from 'lucide-react';
 import { useCsvStore } from '../store/useCsvStore';
 import { fetchWithAuth } from '../utils/api';
 import { toast } from 'sonner';
@@ -30,14 +30,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
   const [inputUsername, setInputUsername] = useState('');
   const [inputPassword, setInputPassword] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
-
-  const requiresPassword = inputUsername.trim().toLowerCase() === 'admin';
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputUsername) return;
-    if (requiresPassword && !inputPassword) {
-      toast.error('Password is required for admin role.');
+    if (!inputPassword) {
+      toast.error('Password is required.');
       return;
     }
 
@@ -122,7 +121,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
               {/* Server Environment */}
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Select Server Environment</label>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
                   {(['production', 'development', 'custom'] as const).map((env) => (
                     <button
                       key={env}
@@ -219,26 +218,34 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
                         className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                       />
                     </div>
-                    {requiresPassword && (
-                      <div className="animate-in slide-in-from-top-1 duration-200">
-                        <span className="text-[10px] font-semibold text-gray-400 mb-1 block">Admin Password</span>
+                    <div>
+                      <span className="text-[10px] font-semibold text-gray-400 mb-1 block">Password</span>
+                      <div className="relative">
                         <input
-                          type="password"
-                          placeholder="••••••••"
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="********"
                           value={inputPassword}
                           onChange={(e) => setInputPassword(e.target.value)}
                           required
-                          className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                          className="w-full text-xs p-2.5 pr-9 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          className="absolute inset-y-0 right-0 px-2 text-gray-400 hover:text-gray-600"
+                          title={showPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
                       </div>
-                    )}
+                    </div>
                     <button
                       type="submit"
                       disabled={loggingIn}
                       className="w-full mt-2 py-2.5 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
                     >
                       <KeyRound size={13} />
-                      {loggingIn ? 'Connecting...' : requiresPassword ? 'Login as Admin' : 'Connect as Worker'}
+                      {loggingIn ? 'Connecting...' : 'Login'}
                     </button>
                   </form>
                 )}
@@ -250,3 +257,4 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
     </div>
   );
 };
+

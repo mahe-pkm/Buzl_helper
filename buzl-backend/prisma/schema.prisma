@@ -14,6 +14,7 @@ model User {
   passwordHash String
   role         String    @default("worker")
   assignedProducts Product[]
+  actionLogs   ProductActionLog[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @default(now()) @updatedAt
 }
@@ -29,6 +30,20 @@ model Product {
   assigned_to    String?
   assignee       User?    @relation(fields: [assigned_to], references: [id])
   last_action    String?
+  actionLogs     ProductActionLog[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @default(now()) @updatedAt
+}
+
+model ProductActionLog {
+  id        String   @id @default(cuid())
+  productId String
+  userId    String?
+  action    String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([productId, createdAt])
+  @@index([userId, createdAt])
 }

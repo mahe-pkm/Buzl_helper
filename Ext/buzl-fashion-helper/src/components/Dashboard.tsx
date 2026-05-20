@@ -23,12 +23,12 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="bg-white border-b border-gray-200 p-4 flex flex-col gap-4 shadow-sm z-10 relative">
-      <div className="flex justify-between items-end">
+      <div className="flex flex-wrap justify-between items-end gap-2">
         <div className="flex flex-col gap-1">
           <span className="text-3xl font-bold text-gray-900 leading-none">{progress}%</span>
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{activeView === 'mine' ? 'My Progress' : 'All Progress'}</span>
         </div>
-        <div className="flex gap-4 text-right">
+        <div className="grid grid-cols-3 gap-2 text-right sm:flex sm:gap-4">
           <div className="flex flex-col">
             <span className="text-lg font-bold text-gray-800 leading-none">{completed}</span>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mt-1">Done</span>

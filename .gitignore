@@ -24,6 +24,9 @@
 .vercel/
 **/.vercel/
 
+# Local run logs
+*.log
+
 # IDEs and Editors
 .vscode/
 .idea/

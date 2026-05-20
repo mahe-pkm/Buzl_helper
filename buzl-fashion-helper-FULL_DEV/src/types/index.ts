@@ -1,3 +1,16 @@
+export type TimerAction =
+  | 'generation_start'
+  | 'generation_complete'
+  | 'qc_correction_start'
+  | 'finish';
+
+export interface ProductActionLog {
+  id: string;
+  action: TimerAction;
+  createdAt: string;
+  user?: { id: string; username: string } | null;
+}
+
 export interface Product {
   id: string;
   product_name: string;
@@ -9,6 +22,7 @@ export interface Product {
   notes?: string | null;
   thumbnail_url?: string | null;
   last_action?: string | null;
+  actionLogs?: ProductActionLog[];
   createdAt?: string;
   updatedAt?: string;
 }

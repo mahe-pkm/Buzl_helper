@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { useCsvStore } from '../store/useCsvStore';
 import { fetchWithAuth } from '../utils/api';
 import type { Product } from '../types';
+import { TaskTimer } from './TaskTimer';
 
 type WorkerTab = 'mine' | 'all';
 
@@ -99,6 +100,10 @@ export const WorkerView: React.FC = () => {
     finally { setClaimingId(null); }
   };
 
+  const handleTimerProductUpdated = (updated: Product) => {
+    setProducts(products.map(p => p.id === updated.id ? { ...p, ...updated } : p));
+  };
+
   const statusIcon = (p: Product) => {
     if (p.status === 'completed') return <CheckCircle2 className="text-green-500" size={20} />;
     if (p.status === 'in-progress') return <Clock className="text-blue-400" size={20} />;
@@ -118,20 +123,29 @@ export const WorkerView: React.FC = () => {
     <div className={`bg-white px-3 py-3 border-b border-gray-100 ${product.status === 'completed' ? 'opacity-60' : ''}`}>
       <div className="flex gap-2.5">
         {/* Status icon — only clickable for own tasks */}
+        <div className="w-12 flex-shrink-0 sm:w-14">
         {isOwn ? (
           <button disabled={updatingId === product.id} onClick={() => {
             const next = product.status === 'pending' ? 'in-progress' : product.status === 'in-progress' ? 'completed' : 'pending';
             handleSetStatus(product, next);
-          }} className="mt-0.5 flex-shrink-0 disabled:opacity-50" title={`Status: ${product.status}`}>
+          }} className="mb-1 flex h-6 w-12 items-center justify-center disabled:opacity-50" title={`Status: ${product.status}`}>
             {statusIcon(product)}
           </button>
         ) : (
-          <div className="mt-0.5 flex-shrink-0">{statusIcon(product)}</div>
+          <div className="mb-1 flex h-6 w-12 items-center justify-center">{statusIcon(product)}</div>
         )}
         
         {product.thumbnail_url && (
-          <img src={product.thumbnail_url} alt="Preview" className="w-10 h-10 mt-1 rounded-md object-cover border border-gray-200 flex-shrink-0" />
+          <img src={product.thumbnail_url} alt="Preview" className="mb-1.5 h-10 w-12 rounded-md object-cover border border-gray-200 bg-white" />
         )}
+
+          <TaskTimer
+            product={product}
+            canEdit={isOwn}
+            onProductUpdated={handleTimerProductUpdated}
+            variant="rail"
+          />
+        </div>
 
         <div className="flex-1 min-w-0">
           {/* Title row */}
@@ -149,16 +163,26 @@ export const WorkerView: React.FC = () => {
 
           {/* Assignee (for unassigned/all view) */}
           {!isOwn && (
-            <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
+            <p className="text-[10px] mt-0.5 flex items-center gap-1">
               <User size={9} />
-              {product.assignee ? product.assignee.username : <span className="text-amber-500 font-semibold">Unassigned</span>}
+              {product.assignee ? (
+                <span className="inline-flex items-center gap-1 font-semibold text-blue-600">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                  Assigned: {product.assignee.username}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-amber-500 font-semibold">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  Unassigned
+                </span>
+              )}
             </p>
           )}
 
           {/* Drive Folder */}
           {product.drive_folder && (
             <div className="mt-1.5 flex items-center justify-between text-xs bg-blue-50 px-2 py-1.5 rounded-lg border border-blue-100">
-              <span className="font-medium text-blue-800 text-[11px] truncate pr-2 max-w-[160px]" title={product.drive_folder}>Drive Folder</span>
+              <span className="font-medium text-blue-800 text-[11px] truncate pr-2 max-w-[42vw] sm:max-w-[160px]" title={product.drive_folder}>Drive Folder</span>
               <div className="flex gap-1 flex-shrink-0">
                 <button onClick={() => window.open(product.drive_folder, '_blank')} className="p-1 rounded text-blue-600 hover:bg-blue-100"><ExternalLink size={12} /></button>
                 <button onClick={() => { navigator.clipboard.writeText(product.drive_folder); toast.success('Copied!'); }} className="p-1 rounded text-blue-600 hover:bg-blue-100"><Copy size={12} /></button>
@@ -169,7 +193,7 @@ export const WorkerView: React.FC = () => {
           {/* Reference Link */}
           {product.reference_link && (
             <div className="mt-1 flex items-center justify-between text-xs bg-purple-50 px-2 py-1.5 rounded-lg border border-purple-100">
-              <span className="font-medium text-purple-800 text-[11px] truncate pr-2 max-w-[160px]" title={product.reference_link}>Reference Link</span>
+              <span className="font-medium text-purple-800 text-[11px] truncate pr-2 max-w-[42vw] sm:max-w-[160px]" title={product.reference_link}>Reference Link</span>
               <div className="flex gap-1 flex-shrink-0">
                 <button onClick={() => window.open(product.reference_link!, '_blank')} className="p-1 rounded text-purple-600 hover:bg-purple-100"><ExternalLink size={12} /></button>
                 <button onClick={() => { navigator.clipboard.writeText(product.reference_link!); toast.success('Copied!'); }} className="p-1 rounded text-purple-600 hover:bg-purple-100"><Copy size={12} /></button>
@@ -199,7 +223,7 @@ export const WorkerView: React.FC = () => {
               <button onClick={() => { setEditingNoteId(product.id); setNoteText(product.notes || ''); }}
                 className="mt-1.5 flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600">
                 <MessageSquare size={10} />
-                {product.notes ? <span className="truncate max-w-[220px] italic">{product.notes}</span> : 'Add note'}
+                {product.notes ? <span className="truncate max-w-[52vw] italic sm:max-w-[220px]">{product.notes}</span> : 'Add note'}
               </button>
             )
           )}
@@ -211,10 +235,10 @@ export const WorkerView: React.FC = () => {
   const filtered = activeTab === 'mine' ? mineFiltered : allFiltered;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex min-h-[100dvh] flex-col bg-gray-50 md:mx-auto md:max-w-[480px] md:border-x md:border-gray-200">
       {/* Header */}
-      <header className="flex-shrink-0 bg-gray-900 text-white px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <header className="flex-shrink-0 bg-gray-900 text-white px-4 py-3 flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="bg-white/10 p-1.5 rounded-lg"><Package size={14} /></div>
           <span className="font-bold text-sm">Buzl Helper</span>
         </div>
@@ -234,12 +258,12 @@ export const WorkerView: React.FC = () => {
       <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3">
         {activeTab === 'mine' ? (
           <>
-            <div className="flex justify-between items-end mb-1.5">
+            <div className="flex flex-wrap justify-between items-end gap-2 mb-1.5">
               <div>
                 <span className="text-2xl font-bold text-gray-900 leading-none">{stats.pct}%</span>
                 <span className="text-xs text-gray-400 ml-1.5">my progress</span>
               </div>
-              <div className="flex gap-3 text-right">
+              <div className="grid grid-cols-2 gap-2 text-right sm:flex sm:gap-3">
                 <div><p className="text-base font-bold text-green-600">{stats.done}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Done</p></div>
                 <div><p className="text-base font-bold text-blue-500">{stats.inProgress}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Doing</p></div>
                 <div><p className="text-base font-bold text-gray-500">{stats.pending}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Left</p></div>
@@ -252,12 +276,12 @@ export const WorkerView: React.FC = () => {
           </>
         ) : (
           <>
-            <div className="flex justify-between items-end mb-1.5">
+            <div className="flex flex-wrap justify-between items-end gap-2 mb-1.5">
               <div>
                 <span className="text-2xl font-bold text-gray-900 leading-none">{globalStats.pct}%</span>
                 <span className="text-xs text-gray-400 ml-1.5">overall done</span>
               </div>
-              <div className="flex gap-3 text-right">
+              <div className="grid grid-cols-2 gap-2 text-right sm:flex sm:gap-3">
                 <div><p className="text-base font-bold text-green-600">{globalStats.done}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Done</p></div>
                 <div><p className="text-base font-bold text-blue-500">{globalStats.inProgress}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Doing</p></div>
                 <div><p className="text-base font-bold text-amber-500">{globalStats.unassigned}</p><p className="text-[9px] text-gray-400 uppercase font-semibold">Free</p></div>
@@ -291,7 +315,7 @@ export const WorkerView: React.FC = () => {
           <input type="text" placeholder="Search products..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 overflow-x-auto pb-1">
           {(['all', 'pending', 'in-progress', 'completed'] as const).map(f => (
             <button key={f} onClick={() => setFilterStatus(f)}
               className={`px-2 py-1 rounded text-[10px] font-semibold capitalize transition-colors ${filterStatus === f ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
@@ -328,7 +352,10 @@ export const WorkerView: React.FC = () => {
                 ))}
                 {unassignedProducts.filter(p => filterStatus === 'all' || p.status === filterStatus).length > 0 && (
                   <div className="px-3 py-1.5 bg-amber-50 border-y border-amber-100">
-                    <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide">Unassigned — Available to Claim ({unassignedProducts.length})</p>
+                    <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide inline-flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                      Unassigned — Available to Claim ({unassignedProducts.length})
+                    </p>
                   </div>
                 )}
                 {unassignedProducts

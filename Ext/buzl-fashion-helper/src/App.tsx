@@ -39,6 +39,8 @@ function App() {
         assigned_to: p.assigned_to || null,
         assignee: p.assignee || null,
         status: p.status || 'pending',
+        actionLogs: p.actionLogs || [],
+        last_action: p.last_action || null,
         completed: p.status === 'completed',
         notes: p.notes || '',
         nameCopied: false,
@@ -65,7 +67,7 @@ function App() {
   }, [connectionMode, token, handleRefreshTasks]);
 
   return (
-    <div className="w-[400px] h-screen bg-gray-50 overflow-hidden flex flex-col shadow-xl relative">
+    <div className="mx-auto h-[100dvh] w-full max-w-[420px] bg-gray-50 overflow-hidden flex flex-col shadow-xl relative">
       <Toaster position="top-center" />
 
       <header className="flex-shrink-0 bg-white border-b border-gray-200 p-4 z-20 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)] flex items-center justify-between">
@@ -113,7 +115,7 @@ function App() {
             <div className="p-8 flex flex-col items-center justify-center text-center h-full text-gray-400">
               <div className="text-5xl mb-4">🔒</div>
               <p className="font-bold text-gray-800 text-base mb-1">Server Mode Active</p>
-              <p className="text-xs text-gray-500 max-w-[240px] mb-4">Please log in inside ecosystem settings to retrieve your live assigned task list.</p>
+              <p className="text-xs text-gray-500 max-w-xs mb-4">Please log in inside ecosystem settings to retrieve your live assigned task list.</p>
               <button 
                 onClick={() => setSettingsOpen(true)}
                 className="px-4 py-2 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-lg transition-colors shadow-sm"

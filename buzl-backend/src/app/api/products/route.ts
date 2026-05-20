@@ -26,7 +26,14 @@ export async function GET(req: NextRequest) {
   try {
     // Both admin and workers get ALL products with assignee info
     const products = await prisma.product.findMany({
-      include: { assignee: { select: { id: true, username: true } } },
+      include: {
+        assignee: { select: { id: true, username: true } },
+        actionLogs: {
+          orderBy: { createdAt: "desc" },
+          take: 12,
+          include: { user: { select: { id: true, username: true } } },
+        },
+      },
       orderBy: { product_name: "asc" },
     });
     return jsonWithCors(req, products);

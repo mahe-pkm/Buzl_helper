@@ -12,6 +12,7 @@ export const WorkerView: React.FC = () => {
   const { authUser, logout, products, setProducts, searchQuery, setSearchQuery } = useCsvStore();
   const [activeTab, setActiveTab] = useState<WorkerTab>('mine');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -31,6 +32,16 @@ export const WorkerView: React.FC = () => {
   const myProducts = useMemo(() => products.filter(p => p.assigned_to === authUser?.id), [products, authUser]);
   const unassignedProducts = useMemo(() => products.filter(p => !p.assigned_to), [products]);
   const allProducts = products;
+  const searchNeedle = searchQuery.trim().toLowerCase();
+
+  const matchesSearch = (product: Product) => {
+    if (!searchNeedle) return true;
+    return (
+      product.product_name.toLowerCase().includes(searchNeedle) ||
+      product.drive_folder.toLowerCase().includes(searchNeedle) ||
+      (product.reference_link || '').toLowerCase().includes(searchNeedle)
+    );
+  };
 
   // Stats for header
   const stats = useMemo(() => ({
@@ -50,24 +61,40 @@ export const WorkerView: React.FC = () => {
     pct: allProducts.length > 0 ? Math.round((allProducts.filter(p => p.status === 'completed').length / allProducts.length) * 100) : 0,
   }), [allProducts, unassignedProducts]);
 
+  const mineBaseFiltered = useMemo(() => {
+    return [...myProducts, ...unassignedProducts].filter(matchesSearch);
+  }, [myProducts, unassignedProducts, searchNeedle]);
+
+  const allBaseFiltered = useMemo(() => {
+    return allProducts.filter(matchesSearch);
+  }, [allProducts, searchNeedle]);
+
   // "Mine" tab filtered list (my tasks + unassigned)
   const mineFiltered = useMemo(() => {
-    const base = [...myProducts, ...unassignedProducts];
-    return base.filter(p => {
-      if (filterStatus !== 'all' && p.status !== filterStatus) return false;
-      if (searchQuery) return p.product_name.toLowerCase().includes(searchQuery.toLowerCase());
-      return true;
-    });
-  }, [myProducts, unassignedProducts, filterStatus, searchQuery]);
+    if (filterStatus === 'all') return mineBaseFiltered;
+    return mineBaseFiltered.filter((p) => p.status === filterStatus);
+  }, [mineBaseFiltered, filterStatus]);
 
   // "All" tab filtered
   const allFiltered = useMemo(() => {
-    return allProducts.filter(p => {
-      if (filterStatus !== 'all' && p.status !== filterStatus) return false;
-      if (searchQuery) return p.product_name.toLowerCase().includes(searchQuery.toLowerCase());
-      return true;
-    });
-  }, [allProducts, filterStatus, searchQuery]);
+    if (filterStatus === 'all') return allBaseFiltered;
+    return allBaseFiltered.filter((p) => p.status === filterStatus);
+  }, [allBaseFiltered, filterStatus]);
+
+  const filterBase = activeTab === 'mine' ? mineBaseFiltered : allBaseFiltered;
+  const filterCounts = useMemo(() => ({
+    all: filterBase.length,
+    pending: filterBase.filter((p) => p.status === 'pending').length,
+    'in-progress': filterBase.filter((p) => p.status === 'in-progress').length,
+    completed: filterBase.filter((p) => p.status === 'completed').length,
+  }), [filterBase]);
+
+  const searchSuggestions = useMemo(() => {
+    if (!searchNeedle) return [];
+    return filterBase
+      .filter((product) => product.product_name.toLowerCase().includes(searchNeedle))
+      .slice(0, 6);
+  }, [filterBase, searchNeedle]);
 
   const handleSetStatus = async (product: Product, status: string) => {
     const prev = product.status;
@@ -117,6 +144,18 @@ export const WorkerView: React.FC = () => {
       pending: 'bg-gray-100 text-gray-400',
     };
     return <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${cfg[status] || cfg.pending}`}>{status}</span>;
+  };
+
+  const suggestionStatusClass = (status: string) => {
+    if (status === 'completed') return 'bg-green-100 text-green-700';
+    if (status === 'in-progress') return 'bg-amber-100 text-amber-700';
+    return 'bg-gray-100 text-gray-500';
+  };
+
+  const assignedLabel = (product: Product) => {
+    if (!product.assigned_to) return 'Unassigned';
+    if (product.assigned_to === authUser?.id) return 'You';
+    return product.assignee?.username || 'Worker';
   };
 
   const TaskCard = ({ product, isOwn }: { product: Product; isOwn: boolean }) => (
@@ -233,6 +272,8 @@ export const WorkerView: React.FC = () => {
   );
 
   const filtered = activeTab === 'mine' ? mineFiltered : allFiltered;
+  const mineAssignedFiltered = mineFiltered.filter((p) => p.assigned_to === authUser?.id);
+  const mineUnassignedFiltered = mineFiltered.filter((p) => !p.assigned_to);
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-gray-50 md:mx-auto md:max-w-[480px] md:border-x md:border-gray-200">
@@ -312,14 +353,48 @@ export const WorkerView: React.FC = () => {
       <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200 px-3 py-2 flex flex-col gap-2">
         <div className="relative">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" placeholder="Search products..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+          <input
+            type="text"
+            placeholder="Search products..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setShowSuggestions(true);
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
             className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          {showSuggestions && searchSuggestions.length > 0 && (
+            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+              {searchSuggestions.map((product) => (
+                <button
+                  key={product.id}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setSearchQuery(product.product_name);
+                    setShowSuggestions(false);
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-gray-50"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="truncate pr-2 text-xs font-semibold text-gray-800">{product.product_name}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${suggestionStatusClass(product.status)}`}>
+                      {product.status}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[10px] font-semibold text-blue-700">
+                    <span className="rounded bg-blue-50 px-1.5 py-0.5">Assigned: {assignedLabel(product)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex gap-1 overflow-x-auto pb-1">
           {(['all', 'pending', 'in-progress', 'completed'] as const).map(f => (
             <button key={f} onClick={() => setFilterStatus(f)}
               className={`px-2 py-1 rounded text-[10px] font-semibold capitalize transition-colors ${filterStatus === f ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
-              {f}
+              {f === 'all' ? `All (${filterCounts.all})` : f === 'pending' ? `Pending (${filterCounts.pending})` : f === 'in-progress' ? `In-Progress (${filterCounts['in-progress']})` : `Completed (${filterCounts.completed})`}
             </button>
           ))}
         </div>
@@ -342,26 +417,23 @@ export const WorkerView: React.FC = () => {
           <div>
             {activeTab === 'mine' && (
               <>
-                {myProducts.length > 0 && (
+                {mineAssignedFiltered.length > 0 && (
                   <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100">
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">My Assigned Tasks ({myProducts.length})</p>
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">My Assigned Tasks ({mineAssignedFiltered.length})</p>
                   </div>
                 )}
-                {mineFiltered.filter(p => p.assigned_to === authUser?.id).map(p => (
+                {mineAssignedFiltered.map(p => (
                   <TaskCard key={p.id} product={p} isOwn={true} />
                 ))}
-                {unassignedProducts.filter(p => filterStatus === 'all' || p.status === filterStatus).length > 0 && (
+                {mineUnassignedFiltered.length > 0 && (
                   <div className="px-3 py-1.5 bg-amber-50 border-y border-amber-100">
                     <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide inline-flex items-center gap-1.5">
                       <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                      Unassigned — Available to Claim ({unassignedProducts.length})
+                      Unassigned - Available to Claim ({mineUnassignedFiltered.length})
                     </p>
                   </div>
                 )}
-                {unassignedProducts
-                  .filter(p => filterStatus === 'all' || p.status === filterStatus)
-                  .filter(p => !searchQuery || p.product_name.toLowerCase().includes(searchQuery.toLowerCase()))
-                  .map(p => <TaskCard key={p.id} product={p} isOwn={false} />)}
+                {mineUnassignedFiltered.map((p) => <TaskCard key={p.id} product={p} isOwn={false} />)}
               </>
             )}
             {activeTab === 'all' && filtered.map(p => (

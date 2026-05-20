@@ -34,6 +34,8 @@ export const parseCSV = (file: File): Promise<Product[]> => {
               product_name: productName,
               drive_folder: driveFolder,
               reference_link: referenceLink,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
               status: 'pending',
               actionLogs: [],
               last_action: null,

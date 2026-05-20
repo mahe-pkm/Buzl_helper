@@ -9,14 +9,16 @@ const TIMER_ACTION_ORDER = [
   "qc_correction_start",
   "finish",
 ] as const;
+const REGEN_ACTION = "regeneration";
 
-const TIMER_ACTIONS = new Set<string>(TIMER_ACTION_ORDER);
+const TIMER_ACTIONS = new Set<string>([...TIMER_ACTION_ORDER, REGEN_ACTION]);
 
 const ACTION_LABELS: Record<string, string> = {
   generation_start: "Generation started",
   generation_complete: "Generation completed",
   qc_correction_start: "QC and correction started",
   finish: "Task finished",
+  regeneration: "Regeneration requested",
 };
 
 const STATUS_BY_ACTION: Record<string, string | undefined> = {
@@ -30,7 +32,6 @@ const productInclude = {
   assignee: { select: { id: true, username: true } },
   actionLogs: {
     orderBy: { createdAt: "desc" as const },
-    take: 12,
     include: { user: { select: { id: true, username: true } } },
   },
 };
@@ -93,17 +94,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       select: { action: true },
     });
     const loggedActions = new Set(existingLogs.map((log) => log.action));
-    if (loggedActions.has(action)) {
+    if (action !== REGEN_ACTION && loggedActions.has(action)) {
       return jsonWithCors(req, { error: "This timer step is already logged" }, { status: 409 });
     }
 
-    const actionIndex = TIMER_ACTION_ORDER.indexOf(action as (typeof TIMER_ACTION_ORDER)[number]);
-    const missingPreviousAction = TIMER_ACTION_ORDER
-      .slice(0, actionIndex)
-      .find((previousAction) => !loggedActions.has(previousAction));
-    if (missingPreviousAction) {
-      return jsonWithCors(req, { error: "Complete the previous timer step first" }, { status: 409 });
+    if (action !== REGEN_ACTION) {
+      const actionIndex = TIMER_ACTION_ORDER.indexOf(action as (typeof TIMER_ACTION_ORDER)[number]);
+      const missingPreviousAction = TIMER_ACTION_ORDER
+        .slice(0, actionIndex)
+        .find((previousAction) => !loggedActions.has(previousAction));
+      if (missingPreviousAction) {
+        return jsonWithCors(req, { error: "Complete the previous timer step first" }, { status: 409 });
+      }
     }
+
+    const nextStatus = STATUS_BY_ACTION[action];
+    const productUpdateData =
+      typeof nextStatus === "string"
+        ? { status: nextStatus, last_action: ACTION_LABELS[action] }
+        : { last_action: ACTION_LABELS[action] };
 
     await prisma.$transaction([
       prisma.productActionLog.create({
@@ -115,10 +124,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }),
       prisma.product.update({
         where: { id },
-        data: {
-          status: STATUS_BY_ACTION[action],
-          last_action: ACTION_LABELS[action],
-        },
+        data: productUpdateData,
       }),
     ]);
 

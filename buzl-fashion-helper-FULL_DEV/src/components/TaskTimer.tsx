@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Clock } from 'lucide-react';
+import { Check, Clock, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '../utils/api';
 import type { Product, ProductActionLog, TimerAction } from '../types';
@@ -10,6 +10,7 @@ const TIMER_STEPS: { action: TimerAction; label: string; shortLabel: string; las
   { action: 'qc_correction_start', label: 'QC & Correction Start', shortLabel: 'QC', lastAction: 'QC and correction started' },
   { action: 'finish', label: 'Finish', shortLabel: 'Finish', lastAction: 'Task finished' },
 ];
+const REGEN_ACTION: TimerAction = 'regeneration';
 
 const formatFullTime = (value?: string) => {
   if (!value) return 'Not set';
@@ -70,6 +71,7 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
   variant = 'stack',
 }) => {
   const [savingAction, setSavingAction] = useState<TimerAction | null>(null);
+  const [savingRegen, setSavingRegen] = useState(false);
   const [nowTick, setNowTick] = useState<number | null>(null);
 
   const latestLogs = useMemo(() => {
@@ -112,6 +114,7 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
       active: Boolean(generationStartAt && !finishAt),
     },
   ];
+  const regenCount = useMemo(() => (product.actionLogs || []).filter((log) => log.action === REGEN_ACTION).length, [product.actionLogs]);
 
   const handleTimerAction = async (action: TimerAction) => {
     if (!canEdit) {
@@ -141,6 +144,28 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
     }
   };
 
+  const handleRegeneration = async () => {
+    if (!canEdit) {
+      toast.error('Only the assigned worker or admin can log this timer');
+      return;
+    }
+
+    setSavingRegen(true);
+    try {
+      const updated = await fetchWithAuth(`/products/${product.id}/logs`, {
+        method: 'POST',
+        body: JSON.stringify({ action: REGEN_ACTION }),
+      });
+      onProductUpdated(updated);
+      const nextCount = (updated.actionLogs || []).filter((log: ProductActionLog) => log.action === REGEN_ACTION).length;
+      toast.success(`Re-gen count updated: ${nextCount}`);
+    } catch (error: any) {
+      toast.error(error.message || 'Re-gen update failed');
+    } finally {
+      setSavingRegen(false);
+    }
+  };
+
   const containerClass =
     variant === 'rail'
       ? 'flex flex-col gap-1'
@@ -154,6 +179,12 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
       : variant === 'row'
         ? 'h-[34px] min-w-[44px] rounded-md border px-1.5 text-center transition-colors disabled:cursor-not-allowed'
         : 'min-h-[38px] rounded-md border px-1.5 text-center transition-colors disabled:cursor-not-allowed';
+
+  const regenButtonClass =
+    variant === 'rail'
+      ? 'h-[30px] w-12 rounded-md border border-blue-200 bg-blue-50 px-1 text-center text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed'
+      : 'h-8 min-w-[86px] rounded-md border border-blue-200 bg-blue-50 px-2 text-center text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed';
+  const regenLabel = savingRegen ? 'Save...' : variant === 'rail' ? `R${regenCount}` : `Re-gen (${regenCount})`;
 
   return (
     <div className={variant === 'rail' ? 'flex flex-col gap-1' : 'flex flex-col gap-1.5'}>
@@ -208,6 +239,19 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
           </div>
         ))}
       </div>
+
+      <button
+        type="button"
+        onClick={handleRegeneration}
+        disabled={!canEdit || savingRegen || savingAction !== null}
+        title="Log one regeneration attempt"
+        className={`${regenButtonClass} ${!canEdit ? 'opacity-60' : ''}`}
+      >
+        <span className="flex items-center justify-center gap-1 text-[9px] font-bold leading-none">
+          <RotateCcw size={9} />
+          {regenLabel}
+        </span>
+      </button>
     </div>
   );
 };

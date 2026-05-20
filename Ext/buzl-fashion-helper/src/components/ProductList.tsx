@@ -5,12 +5,65 @@ import { ProductCard } from './ProductCard';
 import type { Product } from '../types';
 
 export const ProductList: React.FC = () => {
-  const { products, userId, searchQuery, activeFilter, activeView } = useCsvStore();
+  const {
+    products,
+    userId,
+    searchQuery,
+    activeFilter,
+    activeView,
+    activeWorkerFilter,
+    activeDateFilter,
+    expandedProductIds,
+    toggleProductExpanded,
+  } = useCsvStore();
+
+  const expandedSet = useMemo(() => new Set(expandedProductIds), [expandedProductIds]);
+
+  const getWorkerFilterKey = (product: Product) => {
+    if (!product.assigned_to && !product.assignee?.username) return 'unassigned';
+    if (product.assigned_to) return `id:${product.assigned_to}`;
+    return `name:${product.assignee!.username.toLowerCase()}`;
+  };
+
+  const toDateKey = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getProductDateKey = (product: Product) => {
+    const timestamps: number[] = [];
+
+    (product.actionLogs || []).forEach((log) => {
+      const time = new Date(log.createdAt).getTime();
+      if (!Number.isNaN(time)) timestamps.push(time);
+    });
+
+    [product.updatedAt, product.createdAt].forEach((value) => {
+      if (!value) return;
+      const time = new Date(value).getTime();
+      if (!Number.isNaN(time)) timestamps.push(time);
+    });
+
+    if (timestamps.length === 0) return null;
+    return toDateKey(Math.max(...timestamps));
+  };
 
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
       // Filter by status
       if (activeFilter !== 'all' && p.status !== activeFilter) return false;
+
+      // Filter by worker
+      if (activeWorkerFilter !== 'all' && getWorkerFilterKey(p) !== activeWorkerFilter) return false;
+
+      // Filter by date (based on latest action/update timestamp)
+      if (activeDateFilter) {
+        const dateKey = getProductDateKey(p);
+        if (!dateKey || dateKey !== activeDateFilter) return false;
+      }
 
       if (activeView === 'mine') {
         const isMine = p.assigned_to === userId;
@@ -30,7 +83,7 @@ export const ProductList: React.FC = () => {
       
       return true;
     });
-  }, [products, userId, searchQuery, activeFilter, activeView]);
+  }, [products, userId, searchQuery, activeFilter, activeView, activeWorkerFilter, activeDateFilter]);
 
   const myProducts = filteredProducts.filter((p) => p.assigned_to === userId);
   const unassignedProducts = filteredProducts.filter((p) => !p.assigned_to);
@@ -54,20 +107,38 @@ export const ProductList: React.FC = () => {
               My Assigned Tasks ({myProducts.length})
             </div>
           )}
-          {myProducts.map((product) => <ProductCard key={product.id} product={product} />)}
+          {myProducts.map((product) => (
+            <ProductCard
+              key={product.id}
+              product={product}
+              expanded={expandedSet.has(product.id)}
+              onToggleExpand={() => toggleProductExpanded(product.id)}
+            />
+          ))}
           {unassignedProducts.length > 0 && (
             <div className="px-4 py-2 bg-amber-50 border-y border-amber-100 text-[11px] font-bold uppercase text-amber-600">
               Unassigned - Available to Claim ({unassignedProducts.length})
             </div>
           )}
-          {unassignedProducts.map((product) => <ProductCard key={product.id} product={product} />)}
+          {unassignedProducts.map((product) => (
+            <ProductCard
+              key={product.id}
+              product={product}
+              expanded={expandedSet.has(product.id)}
+              onToggleExpand={() => toggleProductExpanded(product.id)}
+            />
+          ))}
         </>
       ) : (
         <Virtuoso
           style={{ height: '100%', width: '100%' }}
           data={filteredProducts}
           itemContent={(_, product: Product) => (
-            <ProductCard product={product} />
+            <ProductCard
+              product={product}
+              expanded={expandedSet.has(product.id)}
+              onToggleExpand={() => toggleProductExpanded(product.id)}
+            />
           )}
         />
       )}

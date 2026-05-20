@@ -2,7 +2,8 @@ export type TimerAction =
   | 'generation_start'
   | 'generation_complete'
   | 'qc_correction_start'
-  | 'finish';
+  | 'finish'
+  | 'regeneration';
 
 export interface ProductActionLog {
   id: string;
@@ -17,6 +18,8 @@ export interface Product {
   drive_folder: string;
   reference_link?: string;
   thumbnail_url?: string;
+  createdAt?: string;
+  updatedAt?: string;
   assigned_to?: string | null;
   assignee?: { id: string; username: string } | null;
   status: 'pending' | 'in-progress' | 'completed' | 'rework';

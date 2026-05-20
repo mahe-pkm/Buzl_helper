@@ -9,6 +9,9 @@ interface CsvState {
   searchQuery: string;
   activeFilter: FilterStatus;
   activeView: 'mine' | 'all';
+  activeWorkerFilter: string;
+  activeDateFilter: string;
+  expandedProductIds: string[];
   
   // Connection and Server Settings
   connectionMode: 'local' | 'server';
@@ -16,6 +19,9 @@ interface CsvState {
   vercelUrl: string;
   hostingerUrl: string;
   customUrl: string;
+  dashboardVercelUrl: string;
+  dashboardHostingerUrl: string;
+  dashboardCustomUrl: string;
   token: string | null;
   userId: string | null;
   username: string | null;
@@ -27,6 +33,11 @@ interface CsvState {
   setSearchQuery: (query: string) => void;
   setActiveFilter: (filter: FilterStatus) => void;
   setActiveView: (view: 'mine' | 'all') => void;
+  setActiveWorkerFilter: (worker: string) => void;
+  setActiveDateFilter: (date: string) => void;
+  toggleProductExpanded: (id: string) => void;
+  expandAllProducts: () => void;
+  collapseAllProducts: () => void;
   updateProduct: (id: string, updates: Partial<Product>) => void;
 
   setConnectionMode: (mode: 'local' | 'server') => void;
@@ -34,6 +45,9 @@ interface CsvState {
   setVercelUrl: (url: string) => void;
   setHostingerUrl: (url: string) => void;
   setCustomUrl: (url: string) => void;
+  setDashboardVercelUrl: (url: string) => void;
+  setDashboardHostingerUrl: (url: string) => void;
+  setDashboardCustomUrl: (url: string) => void;
   setCredentials: (username: string | null, token: string | null, userId?: string | null) => void;
 }
 
@@ -46,6 +60,9 @@ export const useCsvStore = create<CsvState>()(
       searchQuery: '',
       activeFilter: 'all',
       activeView: 'mine',
+      activeWorkerFilter: 'all',
+      activeDateFilter: '',
+      expandedProductIds: [],
 
       // Defaults
       connectionMode: 'server',
@@ -53,17 +70,51 @@ export const useCsvStore = create<CsvState>()(
       vercelUrl: 'https://buzl-helper.vercel.app/api',
       hostingerUrl: 'https://buzl-helper.vercel.app/api',
       customUrl: 'http://localhost:3000/api',
+      dashboardVercelUrl: 'https://buzl-dev.vercel.app',
+      dashboardHostingerUrl: 'https://buzl-dev.vercel.app',
+      dashboardCustomUrl: 'http://127.0.0.1:5174',
       token: null,
       userId: null,
       username: null,
 
-      setProducts: (products) => set({ products, isImported: true }),
+      setProducts: (products) => set((state) => {
+        const productIds = new Set(products.map((product) => product.id));
+        return {
+          products,
+          isImported: true,
+          expandedProductIds: state.expandedProductIds.filter((id) => productIds.has(id)),
+        };
+      }),
       setGlobalReferenceUrl: (url) => set({ globalReferenceUrl: url }),
-      clearData: () => set({ products: [], isImported: false, globalReferenceUrl: '', searchQuery: '', activeFilter: 'all', activeView: 'mine', token: null, userId: null, username: null }),
+      clearData: () => set({
+        products: [],
+        isImported: false,
+        globalReferenceUrl: '',
+        searchQuery: '',
+        activeFilter: 'all',
+        activeView: 'mine',
+        activeWorkerFilter: 'all',
+        activeDateFilter: '',
+        expandedProductIds: [],
+        token: null,
+        userId: null,
+        username: null,
+      }),
       
       setSearchQuery: (query) => set({ searchQuery: query }),
       setActiveFilter: (filter) => set({ activeFilter: filter }),
       setActiveView: (activeView) => set({ activeView }),
+      setActiveWorkerFilter: (activeWorkerFilter) => set({ activeWorkerFilter }),
+      setActiveDateFilter: (activeDateFilter) => set({ activeDateFilter }),
+      toggleProductExpanded: (id) => set((state) => ({
+        expandedProductIds: state.expandedProductIds.includes(id)
+          ? state.expandedProductIds.filter((value) => value !== id)
+          : [...state.expandedProductIds, id],
+      })),
+      expandAllProducts: () => set((state) => ({
+        expandedProductIds: state.products.map((product) => product.id),
+      })),
+      collapseAllProducts: () => set({ expandedProductIds: [] }),
       
       updateProduct: (id, updates) => set((state) => ({
         products: state.products.map((p) => (p.id === id ? { ...p, ...updates } : p))
@@ -74,11 +125,14 @@ export const useCsvStore = create<CsvState>()(
       setVercelUrl: (vercelUrl) => set({ vercelUrl }),
       setHostingerUrl: (hostingerUrl) => set({ hostingerUrl }),
       setCustomUrl: (customUrl) => set({ customUrl }),
+      setDashboardVercelUrl: (dashboardVercelUrl) => set({ dashboardVercelUrl }),
+      setDashboardHostingerUrl: (dashboardHostingerUrl) => set({ dashboardHostingerUrl }),
+      setDashboardCustomUrl: (dashboardCustomUrl) => set({ dashboardCustomUrl }),
       setCredentials: (username, token, userId = null) => set({ username, token, userId })
     }),
     {
       name: 'buzl-csv-storage',
-      version: 4, // bumping version clears stale cached data
+      version: 7, // bumping version clears stale cached data
     }
   )
 );

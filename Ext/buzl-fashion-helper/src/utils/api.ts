@@ -1,5 +1,12 @@
 import { useCsvStore } from '../store/useCsvStore';
 
+const trimTrailingSlash = (value: string) => value.trim().replace(/\/+$/, '');
+
+const stripApiSuffix = (value: string) => {
+  const clean = trimTrailingSlash(value);
+  return clean.toLowerCase().endsWith('/api') ? clean.slice(0, -4) : clean;
+};
+
 export function getBaseUrl(): string {
   const state = useCsvStore.getState();
   let url =
@@ -10,7 +17,7 @@ export function getBaseUrl(): string {
         : state.customUrl;
 
   // Clean trailing slashes and whitespace
-  url = url.trim().replace(/\/+$/, '');
+  url = trimTrailingSlash(url);
 
   // Proactively append /api if the user omitted it
   if (url && !url.endsWith('/api')) {
@@ -18,6 +25,26 @@ export function getBaseUrl(): string {
   }
 
   return url;
+}
+
+export function getDashboardUrl(): string {
+  const state = useCsvStore.getState();
+  const configuredUrl =
+    state.serverEnvironment === 'development'
+      ? state.dashboardVercelUrl
+      : state.serverEnvironment === 'production'
+        ? state.dashboardHostingerUrl
+        : state.dashboardCustomUrl;
+
+  const fallbackApiUrl =
+    state.serverEnvironment === 'development'
+      ? state.vercelUrl
+      : state.serverEnvironment === 'production'
+        ? state.hostingerUrl
+        : state.customUrl;
+
+  const selectedUrl = configuredUrl.trim() || fallbackApiUrl;
+  return stripApiSuffix(selectedUrl);
 }
 
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {

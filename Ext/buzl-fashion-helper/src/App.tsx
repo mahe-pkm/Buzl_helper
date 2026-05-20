@@ -4,8 +4,8 @@ import { Dashboard } from './components/Dashboard';
 import { ProductList } from './components/ProductList';
 import { SettingsPanel } from './components/SettingsPanel';
 import { useCsvStore } from './store/useCsvStore';
-import { fetchWithAuth } from './utils/api';
-import { Settings, RefreshCw } from 'lucide-react';
+import { fetchWithAuth, getDashboardUrl } from './utils/api';
+import { Settings, RefreshCw, LogIn } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 
 function App() {
@@ -36,6 +36,8 @@ function App() {
         drive_folder: p.drive_folder,
         reference_link: p.reference_link || undefined,
         thumbnail_url: p.thumbnail_url || undefined,
+        createdAt: p.createdAt || undefined,
+        updatedAt: p.updatedAt || undefined,
         assigned_to: p.assigned_to || null,
         assignee: p.assignee || null,
         status: p.status || 'pending',
@@ -66,9 +68,35 @@ function App() {
     }
   }, [connectionMode, token, handleRefreshTasks]);
 
+  const handleOpenDashboard = () => {
+    const rawUrl = getDashboardUrl();
+    if (!rawUrl) {
+      toast.error('Dashboard URL is missing. Update it in settings.');
+      setSettingsOpen(true);
+      return;
+    }
+
+    const targetUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    try {
+      new URL(targetUrl);
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    } catch {
+      toast.error('Dashboard URL is invalid. Update it in settings.');
+      setSettingsOpen(true);
+    }
+  };
+
   return (
     <div className="mx-auto h-[100dvh] w-full max-w-[420px] bg-gray-50 overflow-hidden flex flex-col shadow-xl relative">
-      <Toaster position="top-center" />
+      <Toaster
+        position="top-center"
+        closeButton
+        toastOptions={{
+          classNames: {
+            closeButton: 'border border-gray-200 bg-white/85 text-gray-400 transition-colors hover:bg-white hover:text-gray-700',
+          },
+        }}
+      />
 
       <header className="flex-shrink-0 bg-white border-b border-gray-200 p-4 z-20 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)] flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -84,6 +112,14 @@ function App() {
           <h1 className="font-bold text-gray-900 tracking-tight text-lg">Buzl Helper</h1>
         </div>
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleOpenDashboard}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+            title="Open Dashboard Login"
+          >
+            <LogIn size={12} />
+            <span>Dashboard</span>
+          </button>
           {connectionMode === 'server' && token && (
             <button 
               onClick={handleRefreshTasks} 

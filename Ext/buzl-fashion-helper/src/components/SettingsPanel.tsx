@@ -21,6 +21,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
     setHostingerUrl,
     customUrl,
     setCustomUrl,
+    dashboardVercelUrl,
+    setDashboardVercelUrl,
+    dashboardHostingerUrl,
+    setDashboardHostingerUrl,
+    dashboardCustomUrl,
+    setDashboardCustomUrl,
     token,
     username,
     setCredentials,
@@ -145,38 +151,71 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
                 </div>
 
                 {serverEnvironment === 'development' && (
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[10px] font-semibold text-gray-400">Vercel (Development Mode) API URL</span>
-                    <input
-                      type="text"
-                      value={vercelUrl}
-                      onChange={(e) => setVercelUrl(e.target.value)}
-                      className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
-                    />
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-semibold text-gray-400">Vercel (Development Mode) API URL</span>
+                      <input
+                        type="text"
+                        value={vercelUrl}
+                        onChange={(e) => setVercelUrl(e.target.value)}
+                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-semibold text-gray-400">Vercel Dashboard URL</span>
+                      <input
+                        type="text"
+                        value={dashboardVercelUrl}
+                        onChange={(e) => setDashboardVercelUrl(e.target.value)}
+                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
+                      />
+                    </div>
                   </div>
                 )}
 
                 {serverEnvironment === 'production' && (
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[10px] font-semibold text-gray-400">Hostinger (Production Mode) API URL</span>
-                    <input
-                      type="text"
-                      value={hostingerUrl}
-                      onChange={(e) => setHostingerUrl(e.target.value)}
-                      className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
-                    />
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-semibold text-gray-400">Hostinger (Production Mode) API URL</span>
+                      <input
+                        type="text"
+                        value={hostingerUrl}
+                        onChange={(e) => setHostingerUrl(e.target.value)}
+                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-semibold text-gray-400">Hostinger Dashboard URL</span>
+                      <input
+                        type="text"
+                        value={dashboardHostingerUrl}
+                        onChange={(e) => setDashboardHostingerUrl(e.target.value)}
+                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
+                      />
+                    </div>
                   </div>
                 )}
 
                 {serverEnvironment === 'custom' && (
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[10px] font-semibold text-gray-400">Custom / Localhost API URL</span>
-                    <input
-                      type="text"
-                      value={customUrl}
-                      onChange={(e) => setCustomUrl(e.target.value)}
-                      className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
-                    />
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-semibold text-gray-400">Custom / Localhost API URL</span>
+                      <input
+                        type="text"
+                        value={customUrl}
+                        onChange={(e) => setCustomUrl(e.target.value)}
+                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-semibold text-gray-400">Custom / Localhost Dashboard URL</span>
+                      <input
+                        type="text"
+                        value={dashboardCustomUrl}
+                        onChange={(e) => setDashboardCustomUrl(e.target.value)}
+                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
+                      />
+                    </div>
                   </div>
                 )}
               </div>

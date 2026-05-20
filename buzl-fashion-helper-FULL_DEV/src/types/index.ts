@@ -2,7 +2,8 @@ export type TimerAction =
   | 'generation_start'
   | 'generation_complete'
   | 'qc_correction_start'
-  | 'finish';
+  | 'finish'
+  | 'regeneration';
 
 export interface ProductActionLog {
   id: string;

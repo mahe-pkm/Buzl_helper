@@ -23,10 +23,22 @@ function App() {
     }
   }, [authUser]);
 
+  const toaster = (
+    <Toaster
+      position={authUser?.role === 'admin' ? 'top-right' : 'top-center'}
+      closeButton
+      toastOptions={{
+        classNames: {
+          closeButton: 'border border-gray-200 bg-white/85 text-gray-400 transition-colors hover:bg-white hover:text-gray-700',
+        },
+      }}
+    />
+  );
+
   if (!authUser) {
     return (
       <div className="w-full min-h-[100dvh] bg-gray-50">
-        <Toaster position="top-center" richColors />
+        {toaster}
         <Login />
       </div>
     );
@@ -35,7 +47,7 @@ function App() {
   if (authUser.role === 'admin') {
     return (
       <>
-        <Toaster position="top-right" richColors />
+        {toaster}
         <AdminView />
       </>
     );
@@ -43,7 +55,7 @@ function App() {
 
   return (
     <div className="w-full min-h-[100dvh] bg-gray-50">
-      <Toaster position="top-center" richColors />
+      {toaster}
       <WorkerView />
     </div>
   );

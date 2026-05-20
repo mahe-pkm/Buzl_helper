@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { LogOut, RefreshCw, Users, Package, Search, Upload, UserPlus, Trash2, KeyRound, CheckCircle2, X, Download, AlertTriangle, ExternalLink, Copy, MessageSquare, Clock, ChevronRight } from 'lucide-react';
+import { LogOut, RefreshCw, Users, Package, Search, Upload, UserPlus, Trash2, KeyRound, CheckCircle2, X, Download, AlertTriangle, ExternalLink, Copy, MessageSquare, Clock, ChevronRight, RotateCcw } from 'lucide-react';
 import { exportCSV } from '../utils/csvParser';
 import { toast } from 'sonner';
 import { useCsvStore } from '../store/useCsvStore';
@@ -25,6 +25,7 @@ export const AdminView: React.FC = () => {
   const [bulkWorker, setBulkWorker] = useState('');
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [resettingStatusId, setResettingStatusId] = useState<string | null>(null);
   const [globalRefLink, setGlobalRefLink] = useState(() => localStorage.getItem(LAST_REFERENCE_LINK_KEY) || '');
   
   // Sorting & Pagination State
@@ -325,6 +326,68 @@ export const AdminView: React.FC = () => {
       updateProduct(productId, { status });
       toast.success('Status updated');
     } catch { toast.error('Status update failed'); }
+  };
+
+  const handleResetStatus = async (productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+    if (product.status === 'pending') {
+      toast.info('Product is already pending');
+      return;
+    }
+
+    setResettingStatusId(productId);
+    try {
+      await fetchWithAuth(`/products/${productId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'pending' }),
+      });
+      updateProduct(productId, {
+        status: 'pending',
+        last_action: 'Status reset to pending by admin',
+      });
+      toast.success(`Status reset: ${product.product_name}`);
+    } catch {
+      toast.error('Status reset failed');
+    } finally {
+      setResettingStatusId(null);
+    }
+  };
+
+  const handleBulkResetStatus = async () => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    const resettable = ids.filter((id) => {
+      const product = products.find((p) => p.id === id);
+      return product && product.status !== 'pending';
+    });
+
+    if (resettable.length === 0) {
+      toast.info('Selected products are already pending');
+      return;
+    }
+
+    askConfirm(`Reset status to pending for ${resettable.length} selected products?`, async () => {
+      setResettingStatusId('bulk');
+      try {
+        await Promise.all(
+          resettable.map((id) =>
+            fetchWithAuth(`/products/${id}/status`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status: 'pending' }),
+            })
+          )
+        );
+        const fresh = await fetchWithAuth('/products');
+        setProducts(fresh);
+        setSelectedIds(new Set());
+        toast.success(`Reset ${resettable.length} products to pending`);
+      } catch {
+        toast.error('Bulk status reset failed');
+      } finally {
+        setResettingStatusId(null);
+      }
+    });
   };
 
   const handleTimerProductUpdated = (updated: Product) => {
@@ -718,6 +781,13 @@ export const AdminView: React.FC = () => {
                   <button onClick={handleBulkAssign} disabled={!bulkWorker || assigningId === 'bulk'} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50">
                     {assigningId === 'bulk' ? 'Assigning...' : 'Assign'}
                   </button>
+                  <button
+                    onClick={handleBulkResetStatus}
+                    disabled={resettingStatusId === 'bulk'}
+                    className="px-3 py-1.5 bg-white text-amber-700 border border-amber-200 rounded-lg text-xs font-semibold hover:bg-amber-50 transition-colors disabled:opacity-50"
+                  >
+                    {resettingStatusId === 'bulk' ? 'Resetting...' : 'Reset Status'}
+                  </button>
                   <div className="h-4 w-px bg-blue-200 mx-1"></div>
                   <button onClick={handleDeleteSelected} disabled={deletingProductId === 'bulk'} className="px-3 py-1.5 bg-white text-red-600 border border-red-200 rounded-lg text-xs font-semibold hover:bg-red-50 transition-colors disabled:opacity-50">
                     {deletingProductId === 'bulk' ? 'Deleting...' : 'Delete Selected'}
@@ -791,15 +861,26 @@ export const AdminView: React.FC = () => {
                             </div>
                           </td>
                           <td className="px-3 py-2.5">
-                            <select value={product.status} onChange={e => handleStatusOverride(product.id, e.target.value)}
-                              className={`text-xs py-1 px-2 border rounded-lg focus:outline-none font-semibold ${
-                                product.status === 'completed' ? 'bg-green-50 border-green-200 text-green-700' :
-                                product.status === 'in-progress' ? 'bg-blue-50 border-blue-200 text-blue-700' :
-                                'bg-gray-50 border-gray-200 text-gray-500'}`}>
-                              <option value="pending">Pending</option>
-                              <option value="in-progress">In Progress</option>
-                              <option value="completed">Completed</option>
-                            </select>
+                            <div className="flex items-center gap-1.5">
+                              <select value={product.status} onChange={e => handleStatusOverride(product.id, e.target.value)}
+                                className={`text-xs py-1 px-2 border rounded-lg focus:outline-none font-semibold ${
+                                  product.status === 'completed' ? 'bg-green-50 border-green-200 text-green-700' :
+                                  product.status === 'in-progress' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                                  'bg-gray-50 border-gray-200 text-gray-500'}`}>
+                                <option value="pending">Pending</option>
+                                <option value="in-progress">In Progress</option>
+                                <option value="completed">Completed</option>
+                              </select>
+                              <button
+                                onClick={() => handleResetStatus(product.id)}
+                                disabled={product.status === 'pending' || resettingStatusId === product.id}
+                                title="Reset status to pending"
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                              >
+                                <RotateCcw size={11} />
+                                {resettingStatusId === product.id ? '...' : 'Reset'}
+                              </button>
+                            </div>
                           </td>
                           <td className="px-3 py-2.5">
                             <TaskTimer

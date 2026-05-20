@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { Upload, Link as LinkIcon, Trash2, Download, Copy, Check } from 'lucide-react';
 import { useCsvStore } from '../store/useCsvStore';
 import { parseCSV, exportCSV } from '../utils/csvParser';
-import { Toaster, toast } from 'sonner';
+import { toast } from 'sonner';
 
 export const ImportSection: React.FC = () => {
   const { setProducts, globalReferenceUrl, setGlobalReferenceUrl, isImported, clearData, products } = useCsvStore();
@@ -67,7 +67,6 @@ export const ImportSection: React.FC = () => {
   if (isImported) {
     return (
       <div className="bg-white border-b border-gray-200">
-        <Toaster position="top-center" />
         {/* Top row: status + action buttons */}
         <div className="flex justify-between items-center px-4 pt-3 pb-2">
           <h2 className="text-sm font-medium text-green-600 flex items-center gap-1">
@@ -119,8 +118,6 @@ export const ImportSection: React.FC = () => {
 
   return (
     <div className="p-5 flex flex-col gap-6">
-      <Toaster position="top-center" />
-      
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-semibold text-gray-800">1. Upload Product CSV</label>
         <p className="text-xs text-gray-500 leading-relaxed">Ensure your CSV has <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">Name</code> and <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">View Link</code> headers (or <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">product_name</code>, <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">drive_folder</code>).</p>

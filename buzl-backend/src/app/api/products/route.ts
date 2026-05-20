@@ -30,7 +30,6 @@ export async function GET(req: NextRequest) {
         assignee: { select: { id: true, username: true } },
         actionLogs: {
           orderBy: { createdAt: "desc" },
-          take: 12,
           include: { user: { select: { id: true, username: true } } },
         },
       },

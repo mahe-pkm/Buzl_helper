@@ -13,6 +13,7 @@ type Tab = 'products' | 'users';
 type CategoryItem = { id: string; name: string };
 const LAST_DRIVE_LINK_KEY = 'buzl_last_drive_link';
 const LAST_REFERENCE_LINK_KEY = 'buzl_last_reference_link';
+const EXTENSION_ZIP_URL = `/buzl-fashion-helper.zip?v=${encodeURIComponent(import.meta.env.VITE_APP_BUILD_ID || '1437c53')}`;
 
 const ThumbnailImage: React.FC<{ thumbnailUrl?: string | null; driveLink?: string | null; className: string; alt?: string }> = ({
   thumbnailUrl,
@@ -874,7 +875,7 @@ export const AdminView: React.FC = () => {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <a href="/buzl-fashion-helper.zip" download className="flex items-center gap-1.5 text-xs text-white/70 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors font-semibold">
+          <a href={EXTENSION_ZIP_URL} download className="flex items-center gap-1.5 text-xs text-white/70 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors font-semibold">
             <Download size={13} /> Download Extension
           </a>
           <button onClick={refresh} className="flex items-center gap-1.5 text-xs text-white/70 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg transition-colors">

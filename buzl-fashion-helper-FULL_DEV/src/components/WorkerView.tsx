@@ -10,6 +10,7 @@ import { getProductPhase } from '../utils/productPhase';
 import { getCachedThumb, setCachedThumb } from '../utils/thumbnailCache';
 
 type WorkerTab = 'mine' | 'all';
+const EXTENSION_ZIP_URL = `/buzl-fashion-helper.zip?v=${encodeURIComponent(import.meta.env.VITE_APP_BUILD_ID || '1437c53')}`;
 
 export const WorkerView: React.FC = () => {
   const { authUser, logout, products, setProducts, searchQuery, setSearchQuery } = useCsvStore();
@@ -399,7 +400,7 @@ export const WorkerView: React.FC = () => {
           <span className="font-bold text-sm">Buzl Helper</span>
         </div>
         <div className="flex items-center gap-2">
-          <a href="/buzl-fashion-helper.zip" download className="text-white/70 hover:text-white p-1 mr-1" title="Download Chrome Extension">
+          <a href={EXTENSION_ZIP_URL} download className="text-white/70 hover:text-white p-1 mr-1" title="Download Chrome Extension">
             <Download size={13} />
           </a>
           <button onClick={refresh} disabled={refreshing} className="text-white/70 hover:text-white p-1">

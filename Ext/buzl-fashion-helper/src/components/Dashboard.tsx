@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Search, UserRound } from 'lucide-react';
 import { useCsvStore } from '../store/useCsvStore';
 import type { FilterStatus, Product } from '../types';
+import { getProductPhase } from '../utils/productPhase';
 
 export const Dashboard: React.FC = () => {
   const {
@@ -15,11 +16,13 @@ export const Dashboard: React.FC = () => {
     setActiveView,
     activeWorkerFilter,
     setActiveWorkerFilter,
+    activeUnassignedOnly,
+    setActiveUnassignedOnly,
+    activeCategoryFilter,
+    setActiveCategoryFilter,
     activeDateFilter,
     setActiveDateFilter,
     expandedProductIds,
-    expandAllProducts,
-    collapseAllProducts,
   } = useCsvStore();
   const [showSuggestions, setShowSuggestions] = useState(false);
 
@@ -62,10 +65,36 @@ export const Dashboard: React.FC = () => {
     if (timestamps.length === 0) return null;
     return toDateKey(Math.max(...timestamps));
   };
+  const getStage = (product: Product) => {
+    const actions = (product.actionLogs || []).map((log) => log.action);
+    // Stage logic matches the visible workflow:
+    // GEN: START logged, GEN DONE not yet.
+    // TO QC: GEN DONE or TO QC logged, QC DONE not yet.
+    // QC: QC DONE logged, BRAND/finish not yet.
+    // POST: BRAND/finish logged, post-processing actions not both done.
+    // Finished products are counted by Completed, not these quick chips.
+    if (actions.includes('finish')) {
+      return actions.includes('brand_approved') && actions.includes('site_uploaded') ? 'none' : 'post';
+    }
+    if (actions.includes('qc_done')) return 'qc';
+    if (actions.includes('qc_correction_start')) return 'to-qc';
+    if (actions.includes('generation_complete')) return 'to-qc';
+    if (actions.includes('generation_start')) return 'generation';
+    return 'none';
+  };
 
   const baseFilteredProducts = useMemo(() => {
     return products.filter((p) => {
-      if (activeWorkerFilter !== 'all' && getWorkerFilterKey(p) !== activeWorkerFilter) return false;
+      if (activeWorkerFilter === 'claimed') {
+        if (!p.assigned_to) return false;
+      } else if (activeWorkerFilter !== 'all' && getWorkerFilterKey(p) !== activeWorkerFilter) {
+        return false;
+      }
+      if (activeUnassignedOnly && p.assigned_to) return false;
+      if (activeCategoryFilter !== 'all') {
+        const category = (p.category || '').trim() || 'Uncategorized';
+        if (category !== activeCategoryFilter) return false;
+      }
 
       if (activeDateFilter) {
         const dateKey = getProductDateKey(p);
@@ -89,14 +118,27 @@ export const Dashboard: React.FC = () => {
 
       return true;
     });
-  }, [products, activeWorkerFilter, activeDateFilter, activeView, userId, searchQuery]);
+  }, [products, activeWorkerFilter, activeUnassignedOnly, activeCategoryFilter, activeDateFilter, activeView, userId, searchQuery]);
 
   const filterCounts = useMemo(() => ({
     all: baseFilteredProducts.length,
     pending: baseFilteredProducts.filter((p) => p.status === 'pending').length,
     'in-progress': baseFilteredProducts.filter((p) => p.status === 'in-progress').length,
+    generation: baseFilteredProducts.filter((p) => p.status === 'in-progress' && getStage(p) === 'generation').length,
+    'to-qc': baseFilteredProducts.filter((p) => p.status === 'in-progress' && getStage(p) === 'to-qc').length,
+    qc: baseFilteredProducts.filter((p) => p.status === 'in-progress' && getStage(p) === 'qc').length,
+    post: baseFilteredProducts.filter((p) => getStage(p) === 'post').length,
     completed: baseFilteredProducts.filter((p) => p.status === 'completed').length,
   }), [baseFilteredProducts]);
+  const toQcCount = filterCounts['to-qc'];
+  const quickCounts = useMemo(() => ({
+    unassigned: baseFilteredProducts.filter((p) => !p.assigned_to).length,
+    claimed: baseFilteredProducts.filter((p) => Boolean(p.assigned_to)).length,
+    generation: filterCounts.generation,
+    toQc: toQcCount,
+    qc: filterCounts.qc,
+    post: filterCounts.post,
+  }), [baseFilteredProducts, filterCounts.generation, toQcCount, filterCounts.qc, filterCounts.post]);
 
   const filters: { label: string; value: FilterStatus }[] = [
     { label: `All (${filterCounts.all})`, value: 'all' },
@@ -110,7 +152,7 @@ export const Dashboard: React.FC = () => {
 
     products.forEach((product) => {
       if (product.assigned_to) {
-        const label = product.assignee?.username || `Worker ${product.assigned_to.slice(0, 6)}`;
+        const label = product.assignee?.username || `Member ${product.assigned_to.slice(0, 6)}`;
         workers.set(`id:${product.assigned_to}`, label);
         return;
       }
@@ -123,6 +165,21 @@ export const Dashboard: React.FC = () => {
       .map(([value, label]) => ({ value, label }))
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [products]);
+  const categoryOptions = useMemo(() => {
+    const values = new Set<string>();
+    products.forEach((product) => {
+      const category = (product.category || '').trim() || 'Uncategorized';
+      values.add(category);
+    });
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [products]);
+
+  useEffect(() => {
+    if (activeCategoryFilter === 'all') return;
+    if (!categoryOptions.includes(activeCategoryFilter)) {
+      setActiveCategoryFilter('all');
+    }
+  }, [activeCategoryFilter, categoryOptions, setActiveCategoryFilter]);
 
   const searchSuggestions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -139,14 +196,42 @@ export const Dashboard: React.FC = () => {
     return 'bg-gray-100 text-gray-500';
   };
 
+  const phaseLabel = (product: Product) => {
+    if (product.status !== 'in-progress') return '';
+    const phase = getProductPhase(product);
+    if (phase === 'generation') return 'GEN';
+    if (phase === 'qc') return 'QC';
+    return 'IN-PROGRESS';
+  };
+
   const assignedLabel = (product: Product) => {
     if (!product.assigned_to) return 'Unassigned';
     if (product.assigned_to === userId) return 'You';
-    return product.assignee?.username || `Worker ${product.assigned_to.slice(0, 6)}`;
+    return product.assignee?.username || `Member ${product.assigned_to.slice(0, 6)}`;
   };
 
-  const canExpandAll = products.length > 0 && expandedProductIds.length < products.length;
-  const canCollapseAll = expandedProductIds.length > 0;
+  // Expand/collapse controls live in list section headers now.
+  void expandedProductIds;
+  const isIsoDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+  useEffect(() => {
+    if (activeWorkerFilter === 'all' || activeWorkerFilter === 'unassigned' || activeWorkerFilter === 'claimed') return;
+    const exists = workerOptions.some((worker) => worker.value === activeWorkerFilter);
+    if (!exists) setActiveWorkerFilter('all');
+  }, [activeWorkerFilter, workerOptions, setActiveWorkerFilter]);
+
+  useEffect(() => {
+    if (!activeDateFilter) return;
+    if (!isIsoDate(activeDateFilter)) setActiveDateFilter('');
+  }, [activeDateFilter, setActiveDateFilter]);
+
+  // Prevent contradictory state: a specific worker + "unassigned only" always yields empty.
+  useEffect(() => {
+    if (!activeUnassignedOnly) return;
+    if (activeWorkerFilter !== 'all' && activeWorkerFilter !== 'unassigned') {
+      setActiveUnassignedOnly(false);
+    }
+  }, [activeUnassignedOnly, activeWorkerFilter, setActiveUnassignedOnly]);
 
   return (
     <div className="bg-white border-b border-gray-200 p-3 flex flex-col gap-3 shadow-sm z-10 relative">
@@ -229,7 +314,7 @@ export const Dashboard: React.FC = () => {
                 <div className="flex items-start justify-between gap-2">
                   <span className="truncate pr-2 text-xs font-semibold text-gray-800">{product.product_name}</span>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${statusBadgeClass(product.status)}`}>
-                    {product.status}
+                    {phaseLabel(product) || product.status}
                   </span>
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] font-semibold text-gray-500">
@@ -241,7 +326,7 @@ export const Dashboard: React.FC = () => {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-1.5">
+      <div className="grid grid-cols-3 gap-1.5">
         <label className="relative">
           <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-gray-400">
             <UserRound size={13} />
@@ -251,7 +336,8 @@ export const Dashboard: React.FC = () => {
             onChange={(e) => setActiveWorkerFilter(e.target.value)}
             className="w-full rounded-lg border border-gray-300 bg-gray-50 py-1.5 pl-7 pr-2 text-[11px] font-semibold text-gray-700 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-500"
           >
-            <option value="all">All workers</option>
+            <option value="all">All Members</option>
+            <option value="claimed">Claimed only</option>
             <option value="unassigned">Unassigned only</option>
             {workerOptions.map((worker) => (
               <option key={worker.value} value={worker.value}>
@@ -272,23 +358,111 @@ export const Dashboard: React.FC = () => {
             className="w-full rounded-lg border border-gray-300 bg-gray-50 py-1.5 pl-7 pr-2 text-[11px] font-semibold text-gray-700 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-500"
           />
         </label>
+
+        <label className="relative">
+          <select
+            value={activeCategoryFilter}
+            onChange={(e) => setActiveCategoryFilter(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 bg-gray-50 py-1.5 px-2 text-[11px] font-semibold text-gray-700 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All categories</option>
+            {categoryOptions.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
-      <div className="flex items-center justify-end gap-2">
-        <button
-          onClick={expandAllProducts}
-          disabled={!canExpandAll}
-          className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Expand all
-        </button>
-        <button
-          onClick={collapseAllProducts}
-          disabled={!canCollapseAll}
-          className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          Collapse all
-        </button>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <button
+            onClick={() => setActiveUnassignedOnly(!activeUnassignedOnly)}
+            className={`rounded-lg border px-2 py-1 text-[10px] font-bold whitespace-nowrap ${
+              activeUnassignedOnly
+                ? 'border-amber-300 bg-amber-100 text-amber-800'
+                : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+            }`}
+            title="Show unassigned products"
+          >
+            Unassigned ({quickCounts.unassigned})
+          </button>
+          <button
+            onClick={() => {
+              setActiveWorkerFilter(activeWorkerFilter === 'claimed' ? 'all' : 'claimed');
+              setActiveUnassignedOnly(false);
+            }}
+            className={`rounded-lg border px-2 py-1 text-[10px] font-bold whitespace-nowrap ${
+              activeWorkerFilter === 'claimed'
+                ? 'border-sky-300 bg-sky-100 text-sky-800'
+                : 'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100'
+            }`}
+            title="Show claimed (assigned) products"
+          >
+            Claimed ({quickCounts.claimed})
+          </button>
+          <button
+            onClick={() => setActiveFilter('generation')}
+            className={`rounded-lg border px-2 py-1 text-[10px] font-bold whitespace-nowrap ${
+              activeFilter === 'generation'
+                ? 'border-blue-300 bg-blue-100 text-blue-800'
+                : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+            }`}
+            title="Show generation in progress"
+          >
+            GEN ({quickCounts.generation})
+          </button>
+          <button
+            onClick={() => setActiveFilter('to-qc')}
+            className={`rounded-lg border px-2 py-1 text-[10px] font-bold whitespace-nowrap ${
+              activeFilter === 'to-qc'
+                ? 'border-indigo-300 bg-indigo-100 text-indigo-800'
+                : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+            }`}
+            title="Show moved to QC queue"
+          >
+            TO QC ({quickCounts.toQc})
+          </button>
+          <button
+            onClick={() => setActiveFilter('qc')}
+            className={`rounded-lg border px-2 py-1 text-[10px] font-bold whitespace-nowrap ${
+              activeFilter === 'qc'
+                ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+            }`}
+            title="Show QC in progress"
+          >
+            QC ({quickCounts.qc})
+          </button>
+          <button
+            onClick={() => setActiveFilter('post')}
+            className={`rounded-lg border px-2 py-1 text-[10px] font-bold whitespace-nowrap ${
+              activeFilter === 'post'
+                ? 'border-pink-300 bg-pink-100 text-pink-800'
+                : 'border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100'
+            }`}
+            title="Show products waiting for post-processing"
+          >
+            Post ({quickCounts.post})
+          </button>
+          {(activeFilter === 'generation' || activeFilter === 'to-qc' || activeFilter === 'qc' || activeFilter === 'post' || activeUnassignedOnly || activeCategoryFilter !== 'all' || activeWorkerFilter === 'claimed') && (
+            <button
+              onClick={() => {
+                setActiveFilter('all');
+                setActiveUnassignedOnly(false);
+                setActiveCategoryFilter('all');
+                setActiveDateFilter('');
+                if (activeWorkerFilter === 'claimed') setActiveWorkerFilter('all');
+              }}
+              className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 whitespace-nowrap"
+              title="Clear quick filters"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2" />
       </div>
 
       <div className="flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">

@@ -22,12 +22,22 @@ model User {
 model Product {
   id             String   @id @default(cuid())
   product_name   String
+  category       String?
   drive_folder   String
   reference_link String?
   thumbnail_url  String?
+  reference_thumbnail_url String?
+  thumbnail_cached_data String?
+  reference_thumbnail_cached_data String?
   status         String   @default("pending")
+  current_phase  String   @default("none")
+  regen_image_count Int   @default(0)
+  generated_image_count Int @default(0)
+  full_regen_image_count Int @default(0)
   notes          String?
   assigned_to    String?
+  assignedAt     DateTime?
+  lastActivityAt DateTime @default(now())
   assignee       User?    @relation(fields: [assigned_to], references: [id])
   last_action    String?
   actionLogs     ProductActionLog[]
@@ -46,4 +56,11 @@ model ProductActionLog {
 
   @@index([productId, createdAt])
   @@index([userId, createdAt])
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 }

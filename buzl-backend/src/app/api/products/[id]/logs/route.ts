@@ -2,30 +2,19 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { corsPreflight, jsonWithCors } from "@/lib/cors";
+import { ACTION_LABELS, derivePhaseFromLogs, POST_PROCESS_ACTIONS, REGEN_ACTION, TIMER_ACTION_ORDER } from "@/lib/productState";
 
-const TIMER_ACTION_ORDER = [
-  "generation_start",
-  "generation_complete",
-  "qc_correction_start",
-  "finish",
-] as const;
-const REGEN_ACTION = "regeneration";
-
-const TIMER_ACTIONS = new Set<string>([...TIMER_ACTION_ORDER, REGEN_ACTION]);
-
-const ACTION_LABELS: Record<string, string> = {
-  generation_start: "Generation started",
-  generation_complete: "Generation completed",
-  qc_correction_start: "QC and correction started",
-  finish: "Task finished",
-  regeneration: "Regeneration requested",
-};
+const REQUIRED_TIMER_ACTIONS = new Set<string>(TIMER_ACTION_ORDER);
+const OPTIONAL_TIMER_ACTIONS = new Set<string>(POST_PROCESS_ACTIONS);
+const TIMER_ACTIONS = new Set<string>([...TIMER_ACTION_ORDER, ...POST_PROCESS_ACTIONS, REGEN_ACTION]);
 
 const STATUS_BY_ACTION: Record<string, string | undefined> = {
   generation_start: "in-progress",
   generation_complete: "in-progress",
   qc_correction_start: "in-progress",
+  qc_done: "in-progress",
   finish: "completed",
+  site_uploaded: "completed",
 };
 
 const productInclude = {
@@ -53,7 +42,8 @@ function deriveProductStateFromLogs(logs: ActionLogLite[]) {
   const hasStartedFlow = logs.some((log) =>
     log.action === "generation_start" ||
     log.action === "generation_complete" ||
-    log.action === "qc_correction_start"
+    log.action === "qc_correction_start" ||
+    log.action === "qc_done"
   );
 
   const status = hasFinish ? "completed" : hasStartedFlow ? "in-progress" : "pending";
@@ -61,7 +51,7 @@ function deriveProductStateFromLogs(logs: ActionLogLite[]) {
   const latestLog = [...logs].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
   const last_action = latestLog ? ACTION_LABELS[latestLog.action] || null : null;
 
-  return { status, last_action };
+  return { status, current_phase: derivePhaseFromLogs(logs.map((log) => log.action)), last_action };
 }
 
 export async function OPTIONS(req: NextRequest) {
@@ -126,7 +116,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return jsonWithCors(req, { error: "This timer step is already logged" }, { status: 409 });
     }
 
-    if (action !== REGEN_ACTION) {
+    if (REQUIRED_TIMER_ACTIONS.has(action) && action !== REGEN_ACTION) {
       const actionIndex = TIMER_ACTION_ORDER.indexOf(action as (typeof TIMER_ACTION_ORDER)[number]);
       const missingPreviousAction = TIMER_ACTION_ORDER
         .slice(0, actionIndex)
@@ -136,11 +126,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
+    if (OPTIONAL_TIMER_ACTIONS.has(action) && !loggedActions.has("finish")) {
+      return jsonWithCors(req, { error: "Complete Send to Brand step before post-processing stages" }, { status: 409 });
+    }
+
     const nextStatus = STATUS_BY_ACTION[action];
     const productUpdateData =
       typeof nextStatus === "string"
-        ? { status: nextStatus, last_action: ACTION_LABELS[action] }
-        : { last_action: ACTION_LABELS[action] };
+        ? { status: nextStatus, current_phase: derivePhaseFromLogs([...loggedActions, action]), last_action: ACTION_LABELS[action], lastActivityAt: new Date() }
+        : { current_phase: derivePhaseFromLogs([...loggedActions, action]), last_action: ACTION_LABELS[action], lastActivityAt: new Date() };
 
     await prisma.$transaction([
       prisma.productActionLog.create({
@@ -210,7 +204,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const deleteIds = new Set(logsToDelete.map((log) => log.id));
     const remainingLogs = existingLogs.filter((log) => !deleteIds.has(log.id));
-    const nextState = deriveProductStateFromLogs(remainingLogs);
+    const nextState = {
+      ...deriveProductStateFromLogs(remainingLogs),
+      lastActivityAt: new Date(),
+    };
 
     await prisma.$transaction([
       prisma.productActionLog.deleteMany({

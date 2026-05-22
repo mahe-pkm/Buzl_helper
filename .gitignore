@@ -26,6 +26,7 @@
 
 # Local run logs
 *.log
+logs/
 
 # IDEs and Editors
 .vscode/

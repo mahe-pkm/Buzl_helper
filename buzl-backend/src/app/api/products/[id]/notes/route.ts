@@ -25,6 +25,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id }, 
       data: { 
         notes,
+        lastActivityAt: new Date(),
         last_action: 'Notes updated' 
       } 
     });

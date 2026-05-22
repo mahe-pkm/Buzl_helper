@@ -1,14 +1,34 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ImportSection } from './components/ImportSection';
 import { Dashboard } from './components/Dashboard';
 import { ProductList } from './components/ProductList';
 import { SettingsPanel } from './components/SettingsPanel';
 import { useCsvStore } from './store/useCsvStore';
 import { fetchWithAuth, getDashboardUrl } from './utils/api';
+import { installToastSounds } from './utils/toastSound';
 import { Settings, RefreshCw, LogIn } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 
+const buildProductsSignature = (items: any[]) => items
+  .map((p) => [
+    p.id,
+    p.updatedAt,
+    p.lastActivityAt,
+    p.assigned_to || '',
+    p.assignedAt || '',
+    p.status || '',
+    p.current_phase || '',
+    p.regen_image_count ?? 0,
+    p.generated_image_count ?? 0,
+    p.full_regen_image_count ?? 0,
+    p.actionLogs?.length ?? 0,
+  ].join(':'))
+  .sort()
+  .join('|');
+
 function App() {
+  installToastSounds();
+
   const { 
     isImported, 
     products, 
@@ -20,27 +40,43 @@ function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const productsSignatureRef = useRef('');
+  const autoSyncStartedRef = useRef(false);
 
   // We are "imported" in server mode if we are logged in (have username and token)
   const isSessionActive = connectionMode === 'server' ? (!!token && !!username) : isImported;
 
-  const handleRefreshTasks = useCallback(async () => {
+  const handleRefreshTasks = useCallback(async (options?: { silent?: boolean; notifyOnChange?: boolean }) => {
     if (connectionMode !== 'server' || !token) return;
-    setRefreshing(true);
+    const silent = options?.silent ?? false;
+    if (!silent) setRefreshing(true);
     try {
       const fetched = await fetchWithAuth('/products');
+      const nextSignature = buildProductsSignature(fetched);
+      const previousSignature = productsSignatureRef.current;
+      const hasChanged = previousSignature !== '' && previousSignature !== nextSignature;
       // Map API Products to Extension internal format
       const mapped = fetched.map((p: any) => ({
         id: p.id,
         product_name: p.product_name,
+        category: p.category ?? null,
         drive_folder: p.drive_folder,
         reference_link: p.reference_link || undefined,
+        reference_thumbnail_url: p.reference_thumbnail_url || null,
         thumbnail_url: p.thumbnail_url || undefined,
+        thumbnail_cached_data: p.thumbnail_cached_data || null,
+        reference_thumbnail_cached_data: p.reference_thumbnail_cached_data || null,
         createdAt: p.createdAt || undefined,
         updatedAt: p.updatedAt || undefined,
+        assignedAt: p.assignedAt || null,
+        lastActivityAt: p.lastActivityAt || null,
         assigned_to: p.assigned_to || null,
         assignee: p.assignee || null,
         status: p.status || 'pending',
+        current_phase: p.current_phase || 'none',
+        regen_image_count: typeof p.regen_image_count === 'number' ? p.regen_image_count : 0,
+        generated_image_count: typeof p.generated_image_count === 'number' ? p.generated_image_count : 0,
+        full_regen_image_count: typeof p.full_regen_image_count === 'number' ? p.full_regen_image_count : 0,
         actionLogs: p.actionLogs || [],
         last_action: p.last_action || null,
         completed: p.status === 'completed',
@@ -53,11 +89,16 @@ function App() {
       }));
 
       setProducts(mapped);
-      toast.success('Tasks updated from server');
+      productsSignatureRef.current = nextSignature;
+      if (!silent) {
+        toast.success('Tasks updated from server');
+      } else if (options?.notifyOnChange && hasChanged) {
+        toast.info('Tasks updated by another member');
+      }
     } catch (err: any) {
-      toast.error('Failed to sync tasks with server');
+      if (!silent) toast.error('Failed to sync tasks with server');
     } finally {
-      setRefreshing(false);
+      if (!silent) setRefreshing(false);
     }
   }, [connectionMode, token, setProducts]);
 
@@ -66,6 +107,20 @@ function App() {
     if (connectionMode === 'server' && token) {
       handleRefreshTasks();
     }
+  }, [connectionMode, token, handleRefreshTasks]);
+
+  useEffect(() => {
+    if (connectionMode !== 'server' || !token) return;
+    autoSyncStartedRef.current = true;
+    const intervalId = window.setInterval(() => {
+      if (!autoSyncStartedRef.current || document.visibilityState === 'hidden') return;
+      handleRefreshTasks({ silent: true, notifyOnChange: true });
+    }, 20000);
+
+    return () => {
+      autoSyncStartedRef.current = false;
+      window.clearInterval(intervalId);
+    };
   }, [connectionMode, token, handleRefreshTasks]);
 
   const handleOpenDashboard = () => {
@@ -122,7 +177,7 @@ function App() {
           </button>
           {connectionMode === 'server' && token && (
             <button 
-              onClick={handleRefreshTasks} 
+              onClick={() => handleRefreshTasks()} 
               disabled={refreshing}
               className={`p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition-all ${refreshing ? 'animate-spin' : ''}`}
               title="Sync Tasks"
@@ -171,7 +226,7 @@ function App() {
               <span className="text-xs font-bold text-green-600 flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Server Connected
               </span>
-              <span className="text-[10px] text-gray-400 font-semibold">Worker: {username}</span>
+              <span className="text-[10px] text-gray-400 font-semibold">Member: {username}</span>
             </div>
           )}
           <Dashboard />

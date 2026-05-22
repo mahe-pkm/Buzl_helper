@@ -10,6 +10,7 @@ import { TaskTimer } from './TaskTimer';
 import { buildDriveThumbnailUrl, buildThumbnailCandidates } from '../utils/driveThumbnail';
 
 type Tab = 'products' | 'users';
+type CategoryItem = { id: string; name: string };
 const LAST_DRIVE_LINK_KEY = 'buzl_last_drive_link';
 const LAST_REFERENCE_LINK_KEY = 'buzl_last_reference_link';
 
@@ -23,12 +24,21 @@ const ThumbnailImage: React.FC<{ thumbnailUrl?: string | null; driveLink?: strin
     () => buildThumbnailCandidates(thumbnailUrl, driveLink),
     [thumbnailUrl, driveLink],
   );
+
+  // Remount the stateful inner component when candidate list changes; avoids setState-in-effect.
+  const candidatesKey = candidates.join('|');
+  return (
+    <ThumbnailImageInner
+      key={candidatesKey}
+      candidates={candidates}
+      className={className}
+      alt={alt}
+    />
+  );
+};
+
+const ThumbnailImageInner: React.FC<{ candidates: string[]; className: string; alt: string }> = ({ candidates, className, alt }) => {
   const [thumbnailIndex, setThumbnailIndex] = useState(0);
-
-  useEffect(() => {
-    setThumbnailIndex(0);
-  }, [candidates.join('|')]);
-
   const src = candidates[thumbnailIndex];
   if (!src) return null;
 
@@ -48,11 +58,18 @@ export const AdminView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterWorker, setFilterWorker] = useState('all');
+  const [filterCategory, setFilterCategory] = useState('all');
+  const [importCategory, setImportCategory] = useState('');
+  const [categoriesMaster, setCategoriesMaster] = useState<CategoryItem[]>([]);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [replaceMode, setReplaceMode] = useState(false); // Default to false to prevent accidental deletion
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkWorker, setBulkWorker] = useState('');
+  const [bulkCategory, setBulkCategory] = useState('');
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
   const [resettingStatusId, setResettingStatusId] = useState<string | null>(null);
@@ -74,6 +91,10 @@ export const AdminView: React.FC = () => {
   const [driveImporting, setDriveImporting] = useState(false);
   const [driveLog, setDriveLog] = useState<string[]>([]);
   const [driveFoundFolders, setDriveFoundFolders] = useState<{ id: string, name: string, path: string, webViewLink: string, selected: boolean, exists: boolean, thumbnail: string | null }[]>([]);
+  const normalizeCategory = (value?: string | null) => {
+    const clean = (value || '').trim();
+    return clean || null;
+  };
 
   const askConfirm = (message: string, onConfirm: () => void) => {
     setConfirmDialog({ isOpen: true, message, onConfirm });
@@ -120,10 +141,25 @@ export const AdminView: React.FC = () => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const refresh = async () => {
-    const [prods, wrks] = await Promise.all([fetchWithAuth('/products'), fetchWithAuth('/users')]);
-    setProducts(prods); setWorkers(wrks);
+    const [prods, wrks, cats] = await Promise.all([fetchWithAuth('/products'), fetchWithAuth('/users'), fetchWithAuth('/categories')]);
+    setProducts(prods); setWorkers(wrks); setCategoriesMaster(cats);
     toast.success('Refreshed');
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cats = await fetchWithAuth('/categories');
+        if (!cancelled) setCategoriesMaster(cats);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleFileUpload = async (file: File) => {
     if (!file.name.endsWith('.csv')) { toast.error('Upload a .csv file'); return; }
@@ -137,7 +173,8 @@ export const AdminView: React.FC = () => {
         // Apply global reference link if row doesn't have one
         const productsToUpload = parsed.map(p => ({
           ...p,
-          reference_link: p.reference_link || globalRefLink || null
+          reference_link: p.reference_link || globalRefLink || null,
+          category: normalizeCategory(importCategory),
         }));
 
         await fetchWithAuth('/products', { method: 'POST', body: JSON.stringify({ products: productsToUpload, replace: replaceMode }) });
@@ -190,14 +227,18 @@ export const AdminView: React.FC = () => {
     const fetchThumbnail = async (id: string): Promise<string | null> => {
       try {
         const url = new URL("https://www.googleapis.com/drive/v3/files");
-        url.searchParams.append('q', `'${id}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`);
+        // Prefer image files first; many folders contain docs/videos that do not expose thumbnailLink reliably.
+        url.searchParams.append(
+          'q',
+          `'${id}' in parents and trashed=false and mimeType contains 'image/' and mimeType!='application/vnd.google-apps.folder'`
+        );
         url.searchParams.append('key', API_KEY);
-        url.searchParams.append('fields', 'files(id,thumbnailLink)');
-        url.searchParams.append('pageSize', '20');
+        url.searchParams.append('fields', 'files(id,mimeType,thumbnailLink,webContentLink,iconLink),nextPageToken');
+        url.searchParams.append('pageSize', '100');
         const res = await fetch(url.toString());
         const data = await res.json();
         const files = Array.isArray(data?.files) ? data.files : [];
-        const targetFile = files.find((file: any) => file?.id || file?.thumbnailLink);
+        const targetFile = files.find((file: any) => file?.thumbnailLink) || files.find((file: any) => file?.id);
         if (!targetFile) return null;
         if (targetFile.id) return buildDriveThumbnailUrl(targetFile.id);
         return targetFile.thumbnailLink || null;
@@ -273,6 +314,7 @@ export const AdminView: React.FC = () => {
       drive_folder: f.webViewLink || '',
       reference_link: globalRefLink || null,
       thumbnail_url: f.thumbnail || null,
+      category: normalizeCategory(importCategory),
       last_action: 'Imported from Drive'
     }));
 
@@ -355,12 +397,90 @@ export const AdminView: React.FC = () => {
     });
   };
 
+  const handleBulkCategoryAssign = async () => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    const category = normalizeCategory(bulkCategory);
+    const label = category || 'Uncategorized';
+
+    askConfirm(`Move ${ids.length} selected products to category "${label}"?`, async () => {
+      try {
+        await Promise.all(
+          ids.map((id) =>
+            fetchWithAuth(`/products/${id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ category }),
+            })
+          )
+        );
+        const fresh = await fetchWithAuth('/products');
+        setProducts(fresh);
+        setSelectedIds(new Set());
+        setBulkCategory('');
+        toast.success(`Updated category for ${ids.length} products`);
+      } catch {
+        toast.error('Bulk category update failed');
+      }
+    });
+  };
+
   const handleStatusOverride = async (productId: string, status: string) => {
     try {
       await fetchWithAuth(`/products/${productId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
       updateProduct(productId, { status });
       toast.success('Status updated');
     } catch { toast.error('Status update failed'); }
+  };
+
+  const handleCategoryUpdate = async (productId: string, categoryValue: string) => {
+    const category = normalizeCategory(categoryValue);
+    try {
+      await fetchWithAuth(`/products/${productId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ category }),
+      });
+      updateProduct(productId, { category });
+      toast.success('Category updated');
+    } catch {
+      toast.error('Category update failed');
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    setCreatingCategory(true);
+    try {
+      const created = await fetchWithAuth('/categories', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+      setCategoriesMaster((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewCategoryName('');
+      if (!importCategory) setImportCategory(created.name);
+      toast.success('Category created');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to create category');
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async (category: CategoryItem) => {
+    askConfirm(`Delete category "${category.name}"?`, async () => {
+      setDeletingCategoryId(category.id);
+      try {
+        await fetchWithAuth(`/categories/${category.id}`, { method: 'DELETE' });
+        setCategoriesMaster((prev) => prev.filter((c) => c.id !== category.id));
+        if (importCategory === category.name) setImportCategory('');
+        if (filterCategory === category.name) setFilterCategory('all');
+        toast.success('Category deleted');
+      } catch (e: any) {
+        toast.error(e.message || 'Cannot delete category');
+      } finally {
+        setDeletingCategoryId(null);
+      }
+    });
   };
 
   const handleResetStatus = async (productId: string) => {
@@ -454,7 +574,7 @@ export const AdminView: React.FC = () => {
     e.preventDefault(); setCreatingUser(true);
     try {
       await fetchWithAuth('/users', { method: 'POST', body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole }) });
-      toast.success(`${newRole === 'admin' ? 'Admin' : 'Worker'} "${newUsername}" created`);
+      toast.success(`${newRole === 'admin' ? 'Admin' : 'Member'} "${newUsername}" created`);
       setNewUsername(''); setNewPassword(''); setNewRole('worker');
       setWorkers(await fetchWithAuth('/users'));
     } catch (e: any) { toast.error(e.message || 'Failed'); }
@@ -462,7 +582,7 @@ export const AdminView: React.FC = () => {
   };
 
   const handleDeleteUser = async (id: string, username: string) => {
-    askConfirm(`Delete worker "${username}"? Their products will become unassigned.`, async () => {
+    askConfirm(`Delete Member "${username}"? Their products will become unassigned.`, async () => {
       setDeletingId(id);
       try {
         await fetchWithAuth(`/users/${id}`, { method: 'DELETE' });
@@ -508,6 +628,7 @@ export const AdminView: React.FC = () => {
       if (filterStatus !== 'all' && p.status !== filterStatus) return false;
       if (filterWorker === 'unassigned' && p.assigned_to) return false;
       if (filterWorker !== 'all' && filterWorker !== 'unassigned' && p.assigned_to !== filterWorker) return false;
+      if (filterCategory !== 'all' && (p.category || 'Uncategorized') !== filterCategory) return false;
       if (searchQuery) return p.product_name.toLowerCase().includes(searchQuery.toLowerCase()) || p.drive_folder.toLowerCase().includes(searchQuery.toLowerCase());
       return true;
     });
@@ -532,7 +653,7 @@ export const AdminView: React.FC = () => {
       });
     }
     return result;
-  }, [products, filterStatus, filterWorker, searchQuery, sortConfig]);
+  }, [products, filterStatus, filterWorker, filterCategory, searchQuery, sortConfig]);
 
   const paginatedProducts = useMemo(() => {
     if (pageSize === 'ALL') return filteredAndSorted;
@@ -568,6 +689,12 @@ export const AdminView: React.FC = () => {
   })), [workers, products]);
 
   const onlyWorkers = workers.filter(w => w.role === 'worker');
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p) => set.add(p.category || 'Uncategorized'));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [products]);
+  const categoryOptions = useMemo(() => categoriesMaster.map((c) => c.name), [categoriesMaster]);
 
   const copyText = (text: string, label = 'Copied!') => { navigator.clipboard.writeText(text); toast.success(label); };
 
@@ -616,6 +743,20 @@ export const AdminView: React.FC = () => {
                   <input type="text" placeholder="Applied to all imported folders" value={globalRefLink} onChange={e => setGlobalRefLink(e.target.value)} disabled={driveImporting}
                     className="w-full text-sm p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 mb-1 block">Category for Imported Products</label>
+                  <select
+                    value={importCategory}
+                    onChange={e => setImportCategory(e.target.value)}
+                    disabled={driveImporting}
+                    className="w-full text-sm p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Uncategorized</option>
+                    {categoryOptions.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="flex justify-start">
                   <button
                     type="button"
@@ -630,6 +771,16 @@ export const AdminView: React.FC = () => {
                 <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
                   <input type="checkbox" checked={driveRecursive} onChange={e => setDriveRecursive(e.target.checked)} disabled={driveImporting} className="rounded text-blue-600 focus:ring-blue-500" />
                   Extract recursively (search inside subfolders)
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={replaceMode}
+                    onChange={e => setReplaceMode(e.target.checked)}
+                    disabled={driveImporting}
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  Replace existing products while importing
                 </label>
                 
                 {driveLog.length > 0 && (
@@ -801,7 +952,48 @@ export const AdminView: React.FC = () => {
                   <div className="h-6 w-px bg-gray-200 mx-1"></div>
                   <input type="text" placeholder="Global Reference Link (Optional)" value={globalRefLink} onChange={e => setGlobalRefLink(e.target.value)}
                     className="text-xs border border-gray-200 rounded-lg px-3 py-2 w-full sm:w-auto sm:min-w-[200px] focus:outline-none focus:ring-1 focus:ring-blue-500" title="Applied to all imported products without a reference link" />
+                  <select value={importCategory} onChange={e => setImportCategory(e.target.value)}
+                    className="text-xs border border-gray-200 rounded-lg px-3 py-2 w-full sm:w-auto sm:min-w-[180px] bg-white focus:outline-none focus:ring-1 focus:ring-blue-500" title="Applied to all newly imported products">
+                    <option value="">Uncategorized</option>
+                    {categoryOptions.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                    <input
+                      type="text"
+                      placeholder="New category"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      className="text-xs border border-gray-200 rounded-lg px-3 py-2 w-full sm:w-[160px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCreateCategory}
+                      disabled={creatingCategory || !newCategoryName.trim()}
+                      className="text-xs bg-blue-600 text-white rounded-lg px-3 py-2 font-semibold hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {creatingCategory ? 'Adding...' : 'Add'}
+                    </button>
+                  </div>
                 </div>
+                {categoriesMaster.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 w-full">
+                    {categoriesMaster.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => handleDeleteCategory(c)}
+                        disabled={deletingCategoryId === c.id}
+                        className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        title="Delete category"
+                      >
+                        {c.name}
+                        <X size={11} />
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {/* Search */}
                 <div className="relative w-full xl:flex-1 xl:min-w-[220px]">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -816,9 +1008,13 @@ export const AdminView: React.FC = () => {
                   <option value="completed">Completed</option>
                 </select>
                 <select value={filterWorker} onChange={e => setFilterWorker(e.target.value)} className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="all">All Workers</option>
+                  <option value="all">All Members</option>
                   <option value="unassigned">Unassigned</option>
                   {onlyWorkers.map(w => <option key={w.id} value={w.id}>{w.username}</option>)}
+                </select>
+                <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="all">All Categories</option>
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
                 {/* Right actions */}
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:ml-auto">
@@ -836,12 +1032,23 @@ export const AdminView: React.FC = () => {
                 <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex items-center gap-3">
                   <span className="text-xs font-semibold text-blue-700">{selectedIds.size} selected</span>
                   <select value={bulkWorker} onChange={e => setBulkWorker(e.target.value)} className="text-xs border border-blue-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none">
-                    <option value="">— Pick worker —</option>
+                    <option value="">-- Pick Member --</option>
                     <option value="unassigned">Unassign</option>
                     {onlyWorkers.map(w => <option key={w.id} value={w.id}>{w.username}</option>)}
                   </select>
                   <button onClick={handleBulkAssign} disabled={!bulkWorker || assigningId === 'bulk'} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50">
                     {assigningId === 'bulk' ? 'Assigning...' : 'Assign'}
+                  </button>
+                  <div className="h-4 w-px bg-blue-200 mx-1"></div>
+                  <select value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} className="text-xs border border-blue-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none min-w-[130px]">
+                    <option value="">Uncategorized</option>
+                    {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <button
+                    onClick={handleBulkCategoryAssign}
+                    className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700"
+                  >
+                    Move Category
                   </button>
                   <button
                     onClick={handleBulkResetStatus}
@@ -878,6 +1085,7 @@ export const AdminView: React.FC = () => {
                           Product Name {sortConfig?.key === 'product_name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                         </th>
                         <th className="text-center px-3 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Links</th>
+                        <th className="text-left px-3 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">Category</th>
                         <th className="text-left px-3 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide cursor-pointer hover:bg-gray-100 select-none" onClick={() => requestSort('status')}>
                           Status {sortConfig?.key === 'status' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                         </th>
@@ -926,6 +1134,19 @@ export const AdminView: React.FC = () => {
                                     className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"><Copy size={13} /></button></>
                                 : <span className="text-gray-200 text-xs px-1.5">no ref</span>}
                             </div>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <select
+                              value={product.category || ''}
+                              onChange={(e) => handleCategoryUpdate(product.id, e.target.value)}
+                              className="w-full min-w-[120px] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              title="Edit category"
+                            >
+                              <option value="">Uncategorized</option>
+                              {categoryOptions.map((c) => (
+                                <option key={c} value={c}>{c}</option>
+                              ))}
+                            </select>
                           </td>
                           <td className="px-3 py-2.5">
                             <div className="flex items-center gap-1.5">
@@ -1044,7 +1265,7 @@ export const AdminView: React.FC = () => {
                 <form onSubmit={handleCreateUser} className="flex flex-col gap-3">
                   <div>
                     <label className="text-xs font-semibold text-gray-600 mb-1 block">Username</label>
-                    <input type="text" placeholder="e.g. worker_1" value={newUsername} onChange={e => setNewUsername(e.target.value)} required
+                    <input type="text" placeholder="e.g. team_member_1" value={newUsername} onChange={e => setNewUsername(e.target.value)} required
                       className="w-full text-sm p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
@@ -1056,7 +1277,7 @@ export const AdminView: React.FC = () => {
                     <label className="text-xs font-semibold text-gray-600 mb-1 block">Role</label>
                     <select value={newRole} onChange={e => setNewRole(e.target.value)}
                       className="w-full text-sm p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                      <option value="worker">Worker (Extension Access)</option>
+                      <option value="worker">Member (Extension Access)</option>
                       <option value="admin">Admin (Dashboard Access)</option>
                     </select>
                   </div>
@@ -1068,7 +1289,7 @@ export const AdminView: React.FC = () => {
                 </form>
               </div>
 
-              {/* Right: Worker Table */}
+              {/* Right: Member Table */}
               <div className="flex-1 p-4 sm:p-6">
                 <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><Users size={16} /> All Users ({workers.length})</h3>
                 {workers.length === 0 ? (
@@ -1104,7 +1325,7 @@ export const AdminView: React.FC = () => {
                                       {w.id === authUser?.id && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">YOU</span>}
                                     </p>
                                     <p className={`text-xs font-semibold ${w.role === 'admin' ? 'text-purple-500' : 'text-gray-400'}`}>
-                                      {w.role === 'admin' ? 'Admin' : 'Worker'}
+                                      {w.role === 'admin' ? 'Admin' : 'Member'}
                                     </p>
                                   </div>
                                 </div>

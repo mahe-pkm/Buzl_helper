@@ -6,13 +6,16 @@ import { fetchWithAuth } from '../utils/api';
 import type { Product } from '../types';
 import { TaskTimer } from './TaskTimer';
 import { buildThumbnailCandidates } from '../utils/driveThumbnail';
+import { getProductPhase } from '../utils/productPhase';
+import { getCachedThumb, setCachedThumb } from '../utils/thumbnailCache';
 
 type WorkerTab = 'mine' | 'all';
 
 export const WorkerView: React.FC = () => {
   const { authUser, logout, products, setProducts, searchQuery, setSearchQuery } = useCsvStore();
   const [activeTab, setActiveTab] = useState<WorkerTab>('mine');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'in-progress' | 'generation' | 'qc' | 'completed'>('all');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -44,6 +47,30 @@ export const WorkerView: React.FC = () => {
       (product.reference_link || '').toLowerCase().includes(searchNeedle)
     );
   };
+  const matchesFilterStatus = (product: Product) => {
+    if (filterStatus === 'all') return true;
+    if (filterStatus === 'generation') return product.status === 'in-progress' && getProductPhase(product) === 'generation';
+    if (filterStatus === 'qc') return product.status === 'in-progress' && getProductPhase(product) === 'qc';
+    return product.status === filterStatus;
+  };
+  const matchesFilterCategory = (product: Product) => {
+    if (filterCategory === 'all') return true;
+    const category = (product.category || '').trim() || 'Uncategorized';
+    return category === filterCategory;
+  };
+  const activityTime = (product: Product) => {
+    const timestamps: number[] = [];
+    [product.lastActivityAt, product.assignedAt, product.updatedAt, product.createdAt].forEach((value) => {
+      if (!value) return;
+      const time = new Date(value).getTime();
+      if (!Number.isNaN(time)) timestamps.push(time);
+    });
+    (product.actionLogs || []).forEach((log) => {
+      const time = new Date(log.createdAt).getTime();
+      if (!Number.isNaN(time)) timestamps.push(time);
+    });
+    return timestamps.length > 0 ? Math.max(...timestamps) : 0;
+  };
 
   // Stats for header
   const stats = useMemo(() => ({
@@ -64,30 +91,38 @@ export const WorkerView: React.FC = () => {
   }), [allProducts, unassignedProducts]);
 
   const mineBaseFiltered = useMemo(() => {
-    return [...myProducts, ...unassignedProducts].filter(matchesSearch);
+    return [...myProducts, ...unassignedProducts].filter(matchesSearch).sort((a, b) => activityTime(b) - activityTime(a));
   }, [myProducts, unassignedProducts, searchNeedle]);
 
   const allBaseFiltered = useMemo(() => {
-    return allProducts.filter(matchesSearch);
+    return allProducts.filter(matchesSearch).sort((a, b) => activityTime(b) - activityTime(a));
   }, [allProducts, searchNeedle]);
 
   // "Mine" tab filtered list (my tasks + unassigned)
   const mineFiltered = useMemo(() => {
-    if (filterStatus === 'all') return mineBaseFiltered;
-    return mineBaseFiltered.filter((p) => p.status === filterStatus);
-  }, [mineBaseFiltered, filterStatus]);
+    return mineBaseFiltered.filter((product) => matchesFilterStatus(product) && matchesFilterCategory(product));
+  }, [mineBaseFiltered, filterStatus, filterCategory]);
 
   // "All" tab filtered
   const allFiltered = useMemo(() => {
-    if (filterStatus === 'all') return allBaseFiltered;
-    return allBaseFiltered.filter((p) => p.status === filterStatus);
-  }, [allBaseFiltered, filterStatus]);
+    return allBaseFiltered.filter((product) => matchesFilterStatus(product) && matchesFilterCategory(product));
+  }, [allBaseFiltered, filterStatus, filterCategory]);
 
   const filterBase = activeTab === 'mine' ? mineBaseFiltered : allBaseFiltered;
+  const categoryOptions = useMemo(() => {
+    const values = new Set<string>();
+    filterBase.forEach((product) => {
+      const category = (product.category || '').trim() || 'Uncategorized';
+      values.add(category);
+    });
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [filterBase]);
   const filterCounts = useMemo(() => ({
     all: filterBase.length,
     pending: filterBase.filter((p) => p.status === 'pending').length,
     'in-progress': filterBase.filter((p) => p.status === 'in-progress').length,
+    generation: filterBase.filter((p) => p.status === 'in-progress' && getProductPhase(p) === 'generation').length,
+    qc: filterBase.filter((p) => p.status === 'in-progress' && getProductPhase(p) === 'qc').length,
     completed: filterBase.filter((p) => p.status === 'completed').length,
   }), [filterBase]);
 
@@ -139,13 +174,15 @@ export const WorkerView: React.FC = () => {
     return <Circle className="text-gray-300" size={20} />;
   };
 
-  const statusBadge = (status: string) => {
+  const statusBadge = (product: Product) => {
     const cfg: Record<string, string> = {
       completed: 'bg-green-100 text-green-700',
       'in-progress': 'bg-blue-100 text-blue-600',
       pending: 'bg-gray-100 text-gray-400',
     };
-    return <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${cfg[status] || cfg.pending}`}>{status}</span>;
+    const phase = getProductPhase(product);
+    const label = product.status === 'in-progress' ? (phase === 'qc' ? 'qc' : 'generation') : product.status;
+    return <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${cfg[product.status] || cfg.pending}`}>{label}</span>;
   };
 
   const suggestionStatusClass = (status: string) => {
@@ -157,7 +194,7 @@ export const WorkerView: React.FC = () => {
   const assignedLabel = (product: Product) => {
     if (!product.assigned_to) return 'Unassigned';
     if (product.assigned_to === authUser?.id) return 'You';
-    return product.assignee?.username || 'Worker';
+    return product.assignee?.username || 'Member';
   };
 
   const expandedSet = useMemo(() => new Set(expandedIds), [expandedIds]);
@@ -171,9 +208,10 @@ export const WorkerView: React.FC = () => {
 
   const TaskCard = ({ product, isOwn }: { product: Product; isOwn: boolean }) => {
     const isExpanded = expandedSet.has(product.id);
+    const localMainThumb = useMemo(() => getCachedThumb(product.id, 'main'), [product.id, product.thumbnail_cached_data]);
     const thumbnailCandidates = useMemo(
-      () => buildThumbnailCandidates(product.thumbnail_url, product.drive_folder),
-      [product.thumbnail_url, product.drive_folder],
+      () => [localMainThumb, product.thumbnail_cached_data, ...buildThumbnailCandidates(product.thumbnail_url, product.drive_folder)].filter(Boolean) as string[],
+      [localMainThumb, product.thumbnail_cached_data, product.thumbnail_url, product.drive_folder],
     );
     const [thumbnailIndex, setThumbnailIndex] = useState(0);
     const thumbnailSrc = thumbnailCandidates[thumbnailIndex] || null;
@@ -203,6 +241,20 @@ export const WorkerView: React.FC = () => {
             src={thumbnailSrc}
             alt="Preview"
             className="mb-1.5 h-10 w-12 rounded-md object-cover border border-gray-200 bg-white"
+            onLoad={(e) => {
+              const src = e.currentTarget.currentSrc || e.currentTarget.src;
+              if (!src || src.startsWith('data:')) return;
+              fetch(src).then((res) => (res.ok ? res.blob() : null)).then((blob) => {
+                if (!blob) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+                  if (!dataUrl) return;
+                  setCachedThumb(product.id, 'main', dataUrl);
+                };
+                reader.readAsDataURL(blob);
+              }).catch(() => {});
+            }}
             onError={() => setThumbnailIndex((prev) => (prev < thumbnailCandidates.length - 1 ? prev + 1 : prev))}
           />
         ) : (
@@ -220,7 +272,7 @@ export const WorkerView: React.FC = () => {
               {product.product_name}
             </h3>
             <div className="flex items-center gap-1 flex-shrink-0">
-              {statusBadge(product.status)}
+              {statusBadge(product)}
               <button onClick={() => { navigator.clipboard.writeText(product.product_name); toast.success('Copied!'); }} className="text-gray-400 hover:text-gray-600 p-0.5">
                 <Copy size={11} />
               </button>
@@ -251,6 +303,11 @@ export const WorkerView: React.FC = () => {
               )}
             </p>
           )}
+          <p className="text-[10px] mt-0.5">
+            <span className="inline-flex rounded bg-gray-100 px-1.5 py-0.5 font-semibold text-gray-600">
+              Category: {(product.category || '').trim() || 'Uncategorized'}
+            </span>
+          </p>
 
           {!isExpanded && !product.assigned_to && (
             <button
@@ -449,12 +506,26 @@ export const WorkerView: React.FC = () => {
           )}
         </div>
         <div className="flex gap-1 overflow-x-auto pb-1">
-          {(['all', 'pending', 'in-progress', 'completed'] as const).map(f => (
+          {(['all', 'pending', 'in-progress', 'generation', 'qc', 'completed'] as const).map(f => (
             <button key={f} onClick={() => setFilterStatus(f)}
               className={`px-2 py-1 rounded text-[10px] font-semibold capitalize transition-colors ${filterStatus === f ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
-              {f === 'all' ? `All (${filterCounts.all})` : f === 'pending' ? `Pending (${filterCounts.pending})` : f === 'in-progress' ? `In-Progress (${filterCounts['in-progress']})` : `Completed (${filterCounts.completed})`}
+              {f === 'all' ? `All (${filterCounts.all})` : f === 'pending' ? `Pending (${filterCounts.pending})` : f === 'in-progress' ? `In-Progress (${filterCounts['in-progress']})` : f === 'generation' ? `Generation (${filterCounts.generation})` : f === 'qc' ? `QC (${filterCounts.qc})` : `Completed (${filterCounts.completed})`}
             </button>
           ))}
+        </div>
+        <div>
+          <select
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="all">All Categories</option>
+            {categoryOptions.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

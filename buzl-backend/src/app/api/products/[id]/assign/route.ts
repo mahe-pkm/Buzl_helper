@@ -33,6 +33,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: { 
         assigned_to: assigned_to ?? null,
+        assignedAt: assigned_to ? new Date() : null,
+        lastActivityAt: new Date(),
         last_action: assigned_to ? "Assigned to worker" : "Unassigned"
       },
       include: { assignee: { select: { id: true, username: true } } },

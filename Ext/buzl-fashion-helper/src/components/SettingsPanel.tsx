@@ -142,6 +142,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
                     </button>
                   ))}
                 </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setServerEnvironment('custom');
+                      setCustomUrl('http://127.0.0.1:3000/api');
+                      setDashboardCustomUrl('http://127.0.0.1:5174');
+                      toast.success('Switched to localhost endpoints');
+                    }}
+                    className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-100"
+                  >
+                    Use Localhost
+                  </button>
+                </div>
               </div>
 
               {/* Endpoint URLs */}

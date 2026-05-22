@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserFromRequest } from "@/lib/auth";
 import { corsPreflight, jsonWithCors } from "@/lib/cors";
+import { derivePhaseFromStatus } from "@/lib/productState";
 
 export async function OPTIONS(req: NextRequest) {
   return corsPreflight(req);
@@ -25,6 +26,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id }, 
       data: { 
         status,
+        current_phase: derivePhaseFromStatus(status),
+        lastActivityAt: new Date(),
         last_action: `Status changed to ${status}`
       } 
     });

@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, ExternalLink, Check, CheckCircle2, Circle, Clock, MessageSquare, UserMinus, ChevronDown, ChevronUp, Play, Timer, Flag, RotateCcw, Sparkles, Undo2 } from 'lucide-react';
 import { useCsvStore } from '../store/useCsvStore';
 import { fetchWithAuth } from '../utils/api';
 import type { Product, ProductActionLog, TimerAction } from '../types';
 import { toast } from 'sonner';
 import { buildThumbnailCandidates } from '../utils/driveThumbnail';
+import { getCachedThumb, setCachedThumb } from '../utils/thumbnailCache';
+import { getProductPhase } from '../utils/productPhase';
 
 interface ProductCardProps {
   product: Product;
@@ -14,23 +16,32 @@ interface ProductCardProps {
 }
 
 const TIMER_STEPS: { action: TimerAction; label: string; shortLabel: string; lastAction: string }[] = [
-  { action: 'generation_start', label: 'Gen Start', shortLabel: 'Start', lastAction: 'Generation started' },
-  { action: 'generation_complete', label: 'Gen Done', shortLabel: 'Done', lastAction: 'Generation completed' },
-  { action: 'qc_correction_start', label: 'QC Start', shortLabel: 'QC', lastAction: 'QC and correction started' },
-  { action: 'finish', label: 'Finish', shortLabel: 'Finish', lastAction: 'Task finished' },
+  { action: 'generation_start', label: 'Image Gen Start', shortLabel: 'Start', lastAction: 'Image generation started' },
+  { action: 'generation_complete', label: 'Image Gen Finished', shortLabel: 'Gen Done', lastAction: 'Image generation finished' },
+  { action: 'qc_correction_start', label: 'Move to QC', shortLabel: 'To QC', lastAction: 'Moved to QC' },
+  { action: 'qc_done', label: 'QC Finished', shortLabel: 'QC Done', lastAction: 'QC finished' },
+  { action: 'finish', label: 'Send to Brand', shortLabel: 'Brand', lastAction: 'Sent to brand' },
 ];
-const TIMER_ACTION_ORDER: TimerAction[] = ['generation_start', 'generation_complete', 'qc_correction_start', 'finish'];
+const TIMER_ACTION_ORDER: TimerAction[] = ['generation_start', 'generation_complete', 'qc_correction_start', 'qc_done', 'finish'];
+const POST_PROCESS_STEPS: { action: TimerAction; label: string; lastAction: string }[] = [
+  { action: 'brand_approved', label: 'Brand Approved', lastAction: 'Brand approved' },
+  { action: 'site_uploaded', label: 'Site Uploaded', lastAction: 'Site uploaded' },
+];
+const LOG_TRACKED_STEPS = [...TIMER_STEPS, ...POST_PROCESS_STEPS] as const;
 const REGEN_ACTION: TimerAction = 'regeneration';
 const ACTION_LAST_LABELS: Record<TimerAction, string> = {
-  generation_start: 'Generation started',
-  generation_complete: 'Generation completed',
-  qc_correction_start: 'QC and correction started',
-  finish: 'Task finished',
+  generation_start: 'Image generation started',
+  generation_complete: 'Image generation finished',
+  qc_correction_start: 'Moved to QC',
+  qc_done: 'QC finished',
+  finish: 'Sent to brand',
+  brand_approved: 'Brand approved',
+  site_uploaded: 'Site uploaded',
   regeneration: 'Regeneration requested',
 };
 
 const getTimerStatusPatch = (action: TimerAction): Partial<Product> => {
-  if (action === 'finish') {
+  if (action === 'finish' || action === 'site_uploaded') {
     return { status: 'completed', completed: true };
   }
 
@@ -44,10 +55,12 @@ const formatTimerTime = (createdAt?: string) => {
   if (Number.isNaN(date.getTime())) return 'Not set';
 
   return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
+    year: 'numeric',
+    month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: true,
   }).format(date);
 };
 
@@ -61,6 +74,17 @@ const formatTimerClock = (createdAt?: string) => {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date);
+};
+
+const formatTimerDate = (createdAt?: string) => {
+  if (!createdAt) return '';
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat(undefined, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(date).replace(/ /g, '/').replace(',', '');
 };
 
 const getLogTime = (log?: ProductActionLog) => {
@@ -153,7 +177,8 @@ const deriveProductStateFromLogs = (logs: ProductActionLog[]): Partial<Product> 
   const hasStartedFlow = logs.some((log) =>
     log.action === 'generation_start' ||
     log.action === 'generation_complete' ||
-    log.action === 'qc_correction_start'
+    log.action === 'qc_correction_start' ||
+    log.action === 'qc_done'
   );
 
   const sortedLogs = [...logs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -168,6 +193,7 @@ const deriveProductStateFromLogs = (logs: ProductActionLog[]): Partial<Product> 
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onToggleExpand, style }) => {
   const { updateProduct, products, setProducts, globalReferenceUrl, connectionMode, userId, username } = useCsvStore();
+  const copyResetTimersRef = useRef<Record<string, number>>({});
   const [showNotes, setShowNotes] = useState(false);
   const [localNotes, setLocalNotes] = useState(product.notes || '');
   const [savingNote, setSavingNote] = useState(false);
@@ -175,16 +201,37 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
   const [loggingAction, setLoggingAction] = useState<TimerAction | null>(null);
   const [loggingRegen, setLoggingRegen] = useState(false);
   const [resettingAction, setResettingAction] = useState<TimerAction | null>(null);
-  const [nowTick, setNowTick] = useState<number>(Date.now());
+  const [editingRegenImageCount, setEditingRegenImageCount] = useState(false);
+  const [regenImageCountDraft, setRegenImageCountDraft] = useState(String(product.regen_image_count ?? 0));
+  const [postProcessingOpen, setPostProcessingOpen] = useState(false);
+  const [generatedCountModalOpen, setGeneratedCountModalOpen] = useState(false);
+  const [generatedCountDraft, setGeneratedCountDraft] = useState(String(product.generated_image_count ?? 0));
+  // Avoid calling Date.now() during render; we populate this in an effect.
+  const [nowTick, setNowTick] = useState<number>(0);
+  const localMainThumb = useMemo(() => getCachedThumb(product.id, 'main'), [product.id, product.thumbnail_cached_data]);
   const thumbnailCandidates = useMemo(
-    () => buildThumbnailCandidates(product.thumbnail_url, product.drive_folder),
-    [product.thumbnail_url, product.drive_folder],
+    () => [localMainThumb, product.thumbnail_cached_data, ...buildThumbnailCandidates(product.thumbnail_url, product.drive_folder)].filter(Boolean) as string[],
+    [localMainThumb, product.thumbnail_cached_data, product.thumbnail_url, product.drive_folder],
   );
   const [thumbnailIndex, setThumbnailIndex] = useState(0);
 
   useEffect(() => {
     setLocalNotes(product.notes || '');
   }, [product.notes]);
+
+  useEffect(() => {
+    return () => {
+      // Cleanup any pending copy-state reset timers
+      Object.values(copyResetTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
+      copyResetTimersRef.current = {};
+    };
+  }, []);
+  useEffect(() => {
+    setRegenImageCountDraft(String(product.regen_image_count ?? 0));
+  }, [product.regen_image_count, product.id]);
+  useEffect(() => {
+    setGeneratedCountDraft(String(product.generated_image_count ?? 0));
+  }, [product.generated_image_count, product.id]);
 
   useEffect(() => {
     if (!expanded && showNotes) {
@@ -197,7 +244,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
   const isUnassigned = !product.assigned_to;
   const isCompleted = product.status === 'completed';
   const isInProgress = product.status === 'in-progress';
-  const latestTimerLogs = TIMER_STEPS.reduce<Partial<Record<TimerAction, ProductActionLog>>>((logs, step) => {
+  const phase = getProductPhase(product);
+  const latestTimerLogs = LOG_TRACKED_STEPS.reduce<Partial<Record<TimerAction, ProductActionLog>>>((logs, step) => {
     logs[step.action] = product.actionLogs?.find((log) => log.action === step.action);
     return logs;
   }, {});
@@ -205,6 +253,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
   const generationStartAt = getLogTime(latestTimerLogs.generation_start);
   const generationCompleteAt = getLogTime(latestTimerLogs.generation_complete);
   const qcStartAt = getLogTime(latestTimerLogs.qc_correction_start);
+  const qcDoneAt = getLogTime(latestTimerLogs.qc_done);
   const finishAt = getLogTime(latestTimerLogs.finish);
 
   useEffect(() => {
@@ -237,8 +286,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     },
     {
       label: 'QC',
-      value: formatDuration(qcStartAt, finishAt || (qcStartAt ? nowTick : null)),
-      active: Boolean(qcStartAt && !finishAt),
+      value: formatDuration(qcStartAt, qcDoneAt || (qcStartAt ? nowTick : null)),
+      active: Boolean(qcStartAt && !qcDoneAt),
     },
     {
       label: 'Total',
@@ -255,18 +304,55 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     ));
   };
 
+  const persistThumbFromElement = (element: HTMLImageElement, kind: 'main' | 'reference') => {
+    const src = element.currentSrc || element.src;
+    if (!src || src.startsWith('data:')) return;
+    fetch(src)
+      .then((res) => (res.ok ? res.blob() : null))
+      .then((blob) => {
+        if (!blob) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+          if (!dataUrl) return;
+          setCachedThumb(product.id, kind, dataUrl);
+          if (connectionMode === 'server') {
+            const patchKey = kind === 'main' ? 'thumbnail_cached_data' : 'reference_thumbnail_cached_data';
+            const hasValue = kind === 'main' ? product.thumbnail_cached_data : product.reference_thumbnail_cached_data;
+            if (!hasValue) {
+              fetchWithAuth(`/products/${product.id}`, { method: 'PATCH', body: JSON.stringify({ [patchKey]: dataUrl }) }).catch(() => {});
+            }
+          }
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch(() => {});
+  };
+
   const mergeServerProductUpdate = (updated: Product) => {
     setProducts(products.map((p) => (
       p.id === product.id
         ? {
             ...p,
             product_name: updated.product_name,
+            category: updated.category ?? p.category ?? null,
             drive_folder: updated.drive_folder,
             reference_link: updated.reference_link || undefined,
+            reference_thumbnail_url: updated.reference_thumbnail_url || p.reference_thumbnail_url || undefined,
             thumbnail_url: updated.thumbnail_url || undefined,
+            thumbnail_cached_data: updated.thumbnail_cached_data || p.thumbnail_cached_data || null,
+            reference_thumbnail_cached_data: updated.reference_thumbnail_cached_data || p.reference_thumbnail_cached_data || null,
             assigned_to: updated.assigned_to || null,
             assignee: updated.assignee || null,
             status: updated.status || p.status,
+            current_phase: updated.current_phase || p.current_phase,
+            regen_image_count: typeof updated.regen_image_count === 'number' ? updated.regen_image_count : (p.regen_image_count ?? 0),
+            generated_image_count: typeof updated.generated_image_count === 'number' ? updated.generated_image_count : (p.generated_image_count ?? 0),
+            full_regen_image_count: typeof updated.full_regen_image_count === 'number'
+              ? updated.full_regen_image_count
+              : (p.full_regen_image_count ?? 0),
+            assignedAt: updated.assignedAt || p.assignedAt || null,
+            lastActivityAt: updated.lastActivityAt || p.lastActivityAt || null,
             completed: updated.status === 'completed',
             notes: updated.notes || '',
             actionLogs: updated.actionLogs || [],
@@ -280,10 +366,24 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     try {
       await navigator.clipboard.writeText(text);
       toast.success(`${type} copied!`);
-      
-      if (type === 'Product Name') updateProduct(product.id, { nameCopied: true });
-      if (type === 'Drive Folder') updateProduct(product.id, { driveCopied: true });
-      if (type === 'Reference Link') updateProduct(product.id, { referenceCopied: true });
+
+      const resetKey =
+        type === 'Product Name'
+          ? 'nameCopied'
+          : type === 'Drive Folder'
+            ? 'driveCopied'
+            : type === 'Reference Link'
+              ? 'referenceCopied'
+              : null;
+
+      if (resetKey) {
+        updateProduct(product.id, { [resetKey]: true } as any);
+        const existing = copyResetTimersRef.current[resetKey];
+        if (existing) window.clearTimeout(existing);
+        copyResetTimersRef.current[resetKey] = window.setTimeout(() => {
+          updateProduct(product.id, { [resetKey]: false } as any);
+        }, 1200);
+      }
     } catch (err) {
       toast.error('Failed to copy');
     }
@@ -364,7 +464,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     }
   };
 
-  const handleTimerAction = async (action: TimerAction) => {
+  const commitTimerAction = async (action: TimerAction, generatedCountToStore: number | null) => {
     const step = TIMER_STEPS.find((item) => item.action === action);
     const existingLog = latestTimerLogs[action];
 
@@ -386,7 +486,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
           method: 'POST',
           body: JSON.stringify({ action }),
         });
-        mergeServerProductUpdate(updated);
+        if (generatedCountToStore !== null) {
+          const patched = await fetchWithAuth(`/products/${product.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ generated_image_count: generatedCountToStore }),
+          });
+          mergeServerProductUpdate({ ...updated, generated_image_count: patched.generated_image_count });
+        } else {
+          mergeServerProductUpdate(updated);
+        }
         const milestoneShown = showMilestoneToast(action);
         if (!milestoneShown) {
           toast.success(`${step?.label || 'Timer'} logged`);
@@ -409,6 +517,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     updateProduct(product.id, {
       ...getTimerStatusPatch(action),
       actionLogs: [newLog, ...(product.actionLogs || [])],
+      ...(generatedCountToStore !== null ? { generated_image_count: generatedCountToStore } : {}),
       last_action: step?.lastAction || null,
     });
     setLoggingAction(null);
@@ -418,10 +527,52 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     }
   };
 
+  const handleTimerAction = async (action: TimerAction) => {
+    // For the first generation completion (no regen yet), capture generated image count.
+    // Avoid window.prompt because prompts may be blocked in extension/webviews.
+    if (action === 'generation_complete' && regenCount === 0) {
+      setGeneratedCountModalOpen(true);
+      return;
+    }
+
+    await commitTimerAction(action, null);
+  };
+
+  const confirmGeneratedCountAndComplete = async () => {
+    const parsed = Number.parseInt(generatedCountDraft || '0', 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toast.error('Enter a valid non-negative number');
+      return;
+    }
+
+    setGeneratedCountModalOpen(false);
+    await commitTimerAction('generation_complete', parsed);
+  };
+
   const handleRegenerationAction = async () => {
     if (connectionMode === 'server' && !isMine) {
       toast.error('Claim this task before logging re-gen');
       return;
+    }
+
+    let parsedCount = 1;
+    try {
+      const countInput = typeof window !== 'undefined' && typeof window.prompt === 'function'
+        ? window.prompt('Full re-gen: how many images were regenerated this time?', '1')
+        : null;
+
+      if (typeof countInput === 'string' && countInput.trim() !== '') {
+        const parsed = Number.parseInt(countInput, 10);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          toast.error('Enter a positive number');
+          return;
+        }
+        parsedCount = parsed;
+      } else if (countInput === null) {
+        toast.info('Re-gen logged with default count 1');
+      }
+    } catch {
+      toast.info('Re-gen logged with default count 1');
     }
 
     setLoggingRegen(true);
@@ -432,9 +583,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
           method: 'POST',
           body: JSON.stringify({ action: REGEN_ACTION }),
         });
-        mergeServerProductUpdate(updated);
+        const nextFullRegenImageCount = (updated.full_regen_image_count ?? product.full_regen_image_count ?? 0) + parsedCount;
+        const patched = await fetchWithAuth(`/products/${product.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ full_regen_image_count: nextFullRegenImageCount }),
+        });
+        mergeServerProductUpdate({ ...updated, full_regen_image_count: patched.full_regen_image_count });
         const nextCount = (updated.actionLogs || []).filter((log: ProductActionLog) => log.action === REGEN_ACTION).length;
-        toast.success(`Re-gen count updated: ${nextCount}`);
+        toast.success(`Re-gen logged. Attempts: ${nextCount}. Full re-gen images +${parsedCount}`);
       } catch (err: any) {
         toast.error(err.message || 'Re-gen update failed');
       } finally {
@@ -452,10 +608,34 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
 
     updateProduct(product.id, {
       actionLogs: [newLog, ...(product.actionLogs || [])],
+      full_regen_image_count: (product.full_regen_image_count ?? 0) + parsedCount,
       last_action: 'Regeneration requested',
     });
     setLoggingRegen(false);
-    toast.success(`Re-gen count updated: ${regenCount + 1}`);
+    toast.success(`Re-gen logged. Attempts: ${regenCount + 1}. Full re-gen images +${parsedCount}`);
+  };
+
+  const saveRegenImageCount = async () => {
+    const parsed = Number.parseInt(regenImageCountDraft || '0', 10);
+    const safeCount = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+
+    if (connectionMode === 'server') {
+      try {
+        const updated = await fetchWithAuth(`/products/${product.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ regen_image_count: safeCount }),
+        });
+        mergeServerProductUpdate(updated);
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to save re-gen image count');
+        return;
+      }
+    } else {
+      updateProduct(product.id, { regen_image_count: safeCount });
+    }
+
+    setEditingRegenImageCount(false);
+    toast.success('Re-gen image count updated');
   };
 
   const handleResetTimerAction = async (action: TimerAction) => {
@@ -536,7 +716,43 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
       : 'bg-white border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300';
 
   return (
-    <div style={style} className="px-4 py-2">
+    <>
+      {generatedCountModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-[360px] rounded-xl bg-white shadow-xl border border-gray-200 p-4">
+            <div className="text-sm font-bold text-gray-900">Generated Images Count</div>
+            <div className="mt-1 text-[12px] text-gray-600">
+              Enter how many images were generated for this first generation run.
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                value={generatedCountDraft}
+                onChange={(e) => setGeneratedCountDraft(e.target.value)}
+                className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-[12px] font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setGeneratedCountModalOpen(false)}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmGeneratedCountAndComplete}
+                className="rounded-lg bg-blue-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-blue-700"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={style} className="px-4 py-2">
       <div className={`relative border rounded-xl p-4 transition-all ${cardClass}`}>
         {isCompleted && (
           <div className="pointer-events-none absolute -left-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-green-500 text-white shadow-md">
@@ -566,6 +782,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
               <img
                 src={thumbnailSrc}
                 alt="Preview"
+                onLoad={(e) => persistThumbFromElement(e.currentTarget, 'main')}
                 onError={handleThumbnailError}
                 className="h-12 w-12 flex-shrink-0 rounded-lg object-cover border border-gray-200 bg-white"
               />
@@ -580,7 +797,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                   <span className={`text-[9px] font-bold uppercase px-1.5 py-1 rounded-md ${
                     isCompleted ? 'bg-green-100 text-green-700' : isInProgress ? 'bg-amber-100 text-[#9a5200]' : 'bg-gray-100 text-gray-500'
                   }`}>
-                    {product.status}
+                    {product.status === 'in-progress' ? (phase === 'qc' ? 'qc' : 'generation') : product.status}
                   </span>
                   <button 
                     onClick={() => copyToClipboard(product.product_name, 'Product Name')}
@@ -603,15 +820,32 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
 
           <div className="min-w-0">
             {connectionMode === 'server' && (
-              <div className="mb-2 flex items-center justify-between text-[11px]">
-                <span className={`inline-flex items-center gap-1.5 ${
+              <div className="mb-2 flex items-start justify-between gap-2 text-[11px]">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <span className={`inline-flex items-center gap-1.5 ${
                   isUnassigned ? 'font-semibold text-amber-600' : isMine ? 'font-semibold text-green-700' : 'font-semibold text-blue-700'
                 }`}>
-                  <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${
+                    <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${
                     isUnassigned ? 'bg-amber-500' : isMine ? 'bg-green-500' : 'bg-blue-500'
                   }`} />
-                  {isUnassigned ? 'Unassigned' : isMine ? 'Assigned to you' : `Assigned to ${product.assignee?.username || 'worker'}`}
-                </span>
+                    {isUnassigned ? 'Unassigned' : isMine ? 'Assigned to you' : `Assigned to ${product.assignee?.username || 'member'}`}
+                    {!isUnassigned && (
+                      <span
+                        className={`ml-1 rounded-md border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                          isMine
+                            ? 'border-green-200 bg-green-50 text-green-700'
+                            : 'border-blue-200 bg-blue-50 text-blue-700'
+                        }`}
+                        title="This task is claimed (assigned)"
+                      >
+                        Claimed
+                      </span>
+                    )}
+                  </span>
+                  <span className="inline-flex w-fit items-center rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">
+                    Category: {(product.category || '').trim() || 'Uncategorized'}
+                  </span>
+                </div>
                 {isMine && (
                   <button
                     onClick={handleReleaseTask}
@@ -680,6 +914,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                       </div>
                     </div>
                   )}
+
                 </div>
 
                 <div className="mt-3 flex items-center gap-2">
@@ -696,13 +931,33 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                     onClick={handleRegenerationAction}
                     disabled={loggingRegen || loggingAction !== null || resettingAction !== null || !canEditTimers}
                     className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-                    title="Log one regeneration attempt"
+                    title="Logs one Re-gen attempt (count) and adds to Full Re-gen image count"
                   >
                     <span className="inline-flex items-center gap-1">
                       <RotateCcw size={11} />
-                      {loggingRegen ? 'Saving...' : `Re-gen (${regenCount})`}
+                      {loggingRegen ? 'Saving...' : `Re-gen (${regenCount}) \u2022 Img ${product.full_regen_image_count ?? 0}`}
                     </span>
                   </button>
+                  {editingRegenImageCount ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={0}
+                        value={regenImageCountDraft}
+                        onChange={(e) => setRegenImageCountDraft(e.target.value)}
+                        className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-[11px]"
+                      />
+                      <button onClick={saveRegenImageCount} className="rounded-md bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700">Save</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setEditingRegenImageCount(true)}
+                      className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-[11px] font-bold text-teal-700 hover:bg-teal-100"
+                      title="Manual Re-gen image count (separate from Re-gen attempts)"
+                    >
+                      Re-gen Img ({product.regen_image_count ?? 0})
+                    </button>
+                  )}
                   <button 
                     onClick={() => setShowNotes(!showNotes)}
                     className={`ml-auto text-[11px] flex items-center gap-1 font-semibold transition-colors px-2 py-1 rounded-md ${product.notes ? 'text-amber-700 bg-amber-50 hover:bg-amber-100' : 'text-gray-500 bg-gray-50 hover:bg-gray-100'}`}
@@ -727,7 +982,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                 </div>
 
                 <div className="mt-1.5 rounded-lg border border-gray-200 bg-gray-50 p-1.5">
-                  <div className="grid grid-cols-4 gap-1">
+                  <div className="grid grid-cols-5 gap-1">
                     {TIMER_STEPS.map((step, index) => {
                       const log = latestTimerLogs[step.action];
                       const isLogged = Boolean(log);
@@ -760,6 +1015,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                               <span className="truncate">{isSaving ? 'Save' : isResetting ? 'Reset' : step.shortLabel}</span>
                             </span>
                             <span className={`mt-0.5 block truncate font-mono text-[8px] leading-none ${isLogged ? 'text-green-700' : 'text-gray-400'}`}>
+                              {formatTimerDate(log?.createdAt) || '--/--/----'}
+                            </span>
+                            <span className={`mt-0.5 block truncate font-mono text-[8px] leading-none ${isLogged ? 'text-green-700' : 'text-gray-400'}`}>
                               {formatTimerClock(log?.createdAt) || '--:--'}
                             </span>
                           </button>
@@ -788,6 +1046,57 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                   </div>
                 </div>
 
+                <div className="mt-2 rounded-lg border border-gray-200 bg-white">
+                  <button
+                    onClick={() => setPostProcessingOpen((prev) => !prev)}
+                    className="flex w-full items-center justify-between px-2.5 py-2 text-left"
+                  >
+                    <span className="text-[11px] font-bold text-gray-700">Post Processing Stages</span>
+                    {postProcessingOpen ? <ChevronUp size={13} className="text-gray-500" /> : <ChevronDown size={13} className="text-gray-500" />}
+                  </button>
+                  {postProcessingOpen && (
+                    <div className="border-t border-gray-100 px-2.5 py-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        {POST_PROCESS_STEPS.map((step) => {
+                          const log = latestTimerLogs[step.action];
+                          const isLogged = Boolean(log);
+                          const isSaving = loggingAction === step.action;
+                          const isResetting = resettingAction === step.action;
+                          const canReset = isLogged && canEditTimers && loggingAction === null && resettingAction === null;
+                          const disabled = loggingAction !== null || resettingAction !== null || isLogged || !canEditTimers || !latestTimerLogs.finish;
+
+                          return (
+                            <div key={step.action} className="relative">
+                              <button
+                                onClick={() => handleTimerAction(step.action)}
+                                disabled={disabled}
+                                title={step.lastAction}
+                                className={`min-h-[38px] w-full rounded-md border px-2 py-1 text-left text-[10px] font-semibold transition-colors ${
+                                  isLogged ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'
+                                } ${disabled && !isSaving && !isResetting ? 'opacity-60' : ''}`}
+                              >
+                                <span className="block truncate">{step.label}</span>
+                                <span className={`mt-0.5 block truncate font-mono text-[8px] ${isLogged ? 'text-green-700' : 'text-gray-400'}`}>
+                                  {formatTimerDate(log?.createdAt) || '--/--/----'} {formatTimerClock(log?.createdAt) || '--:--'}
+                                </span>
+                              </button>
+                              {canReset && (
+                                <button
+                                  onClick={() => handleResetTimerAction(step.action)}
+                                  className="absolute -right-1 -top-1 rounded-full border border-gray-200 bg-white p-0.5 text-gray-500 shadow-sm hover:text-blue-700"
+                                  title={`Reset ${step.label}`}
+                                >
+                                  <Undo2 size={9} />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {showNotes && (
                   <textarea
                     value={localNotes}
@@ -805,5 +1114,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
         </div>
       </div>
     </div>
+    </>
   );
 };

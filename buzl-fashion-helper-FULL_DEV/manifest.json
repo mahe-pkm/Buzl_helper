@@ -20,7 +20,19 @@
   "side_panel": {
     "default_path": "index.html"
   },
+  "icons": {
+    "16": "favicon-16.png",
+    "32": "favicon-32.png",
+    "48": "favicon-48.png",
+    "128": "favicon-128.png"
+  },
   "action": {
-    "default_title": "Open Buzl Fashion Helper"
+    "default_title": "Open Buzl Fashion Helper",
+    "default_icon": {
+      "16": "favicon-16.png",
+      "32": "favicon-32.png",
+      "48": "favicon-48.png",
+      "128": "favicon-128.png"
+    }
   }
 }

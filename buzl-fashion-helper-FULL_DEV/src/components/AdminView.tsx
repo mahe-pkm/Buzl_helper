@@ -904,9 +904,7 @@ export const AdminView: React.FC = () => {
       {/* Top Nav */}
       <header className="bg-gray-900 text-white px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2 shadow-lg flex-shrink-0">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <div className="bg-white/10 p-2 rounded-lg">
-            <Package size={18} />
-          </div>
+          <img src="/logo-icon.png" alt="" className="h-9 w-9 rounded-lg shadow-sm ring-1 ring-white/15" />
           <div>
             <h1 className="font-bold text-base leading-none">Buzl Admin</h1>
             <p className="text-xs text-white/50 mt-0.5 hidden sm:block">Fashion Helper Control Panel</p>

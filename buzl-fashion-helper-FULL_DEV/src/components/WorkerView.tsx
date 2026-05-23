@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { LogOut, ExternalLink, Copy, CheckCircle2, Clock, Circle, Search, RefreshCw, MessageSquare, X, Check, Package, User, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { LogOut, ExternalLink, Copy, CheckCircle2, Clock, Circle, Search, RefreshCw, MessageSquare, X, Check, User, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCsvStore } from '../store/useCsvStore';
 import { fetchWithAuth } from '../utils/api';
@@ -411,7 +411,7 @@ export const WorkerView: React.FC = () => {
       {/* Header */}
       <header className="flex-shrink-0 bg-gray-900 text-white px-4 py-3 flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <div className="bg-white/10 p-1.5 rounded-lg"><Package size={14} /></div>
+          <img src="/logo-icon.png" alt="" className="h-7 w-7 rounded-lg shadow-sm ring-1 ring-white/15" />
           <span className="font-bold text-sm">Buzl Helper</span>
         </div>
         <div className="flex items-center gap-2">

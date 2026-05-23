@@ -24,11 +24,71 @@ const buildProductsSignature = (items: any[]) => items
   .sort()
   .join('|');
 
+const MAJOR_SYNC_ACTIONS: Record<string, string> = {
+  generation_complete: 'Generation completed',
+  qc_done: 'QC completed',
+  brand_approved: 'Brand approved',
+  site_uploaded: 'Live upload done',
+};
+
+const shortProductName = (name = 'Product') => (
+  name.length > 42 ? `${name.slice(0, 39)}...` : name
+);
+
+const actorName = (product: any, log?: any) => (
+  log?.user?.username || product.assignee?.username || 'A member'
+);
+
+const detectMajorSyncEvents = (previousProducts: any[], nextProducts: any[], currentUsername?: string | null) => {
+  const previousById = new Map(previousProducts.map((product) => [product.id, product]));
+  const events: { title: string; description: string }[] = [];
+
+  for (const product of nextProducts) {
+    const previous = previousById.get(product.id);
+    if (!previous) continue;
+
+    const productName = shortProductName(product.product_name);
+    const nextAssignee = product.assignee?.username || '';
+    const previousAssignee = previous.assignee?.username || '';
+
+    if (!previous.assigned_to && product.assigned_to && nextAssignee !== currentUsername) {
+      events.push({
+        title: 'Task claimed',
+        description: `${nextAssignee || 'A member'} claimed ${productName}.`,
+      });
+    }
+
+    if (previous.assigned_to && !product.assigned_to && previousAssignee !== currentUsername) {
+      events.push({
+        title: 'Task unclaimed',
+        description: `${previousAssignee || 'A member'} released ${productName}.`,
+      });
+    }
+
+    const previousLogIds = new Set((previous.actionLogs || []).map((log: any) => log.id));
+    const newMajorLogs = (product.actionLogs || [])
+      .filter((log: any) => !previousLogIds.has(log.id) && MAJOR_SYNC_ACTIONS[log.action])
+      .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    for (const log of newMajorLogs) {
+      const actor = actorName(product, log);
+      if (actor === currentUsername) continue;
+      events.push({
+        title: MAJOR_SYNC_ACTIONS[log.action],
+        description: `${actor} updated ${productName}.`,
+      });
+    }
+  }
+
+  return events.slice(0, 2);
+};
+
 function App() {
   installToastSounds();
 
   const { authUser, setProducts, setWorkers } = useCsvStore();
   const productsSignatureRef = useRef('');
+  const productsRef = useRef<any[]>([]);
 
   useEffect(() => {
     if (!authUser) return;
@@ -36,6 +96,7 @@ function App() {
     fetchWithAuth('/products')
       .then((products) => {
         productsSignatureRef.current = buildProductsSignature(products);
+        productsRef.current = products;
         setProducts(products);
       })
       .catch(() => toast.error('Products could not load', {
@@ -61,11 +122,11 @@ function App() {
         const nextSignature = buildProductsSignature(products);
         const previousSignature = productsSignatureRef.current;
         if (previousSignature && previousSignature !== nextSignature) {
+          detectMajorSyncEvents(productsRef.current, products, authUser.username)
+            .forEach((event) => toast.info(event.title, { description: event.description }));
           setProducts(products);
-          toast.info('Tasks updated by another member', {
-            description: 'Dashboard data was refreshed automatically from the server.',
-          });
         }
+        productsRef.current = products;
         productsSignatureRef.current = nextSignature;
       } catch {
         // Keep background sync quiet; manual refresh still reports failures.

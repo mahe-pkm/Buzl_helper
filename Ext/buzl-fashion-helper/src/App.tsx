@@ -26,6 +26,65 @@ const buildProductsSignature = (items: any[]) => items
   .sort()
   .join('|');
 
+const MAJOR_SYNC_ACTIONS: Record<string, string> = {
+  generation_complete: 'Generation completed',
+  qc_done: 'QC completed',
+  brand_approved: 'Brand approved',
+  site_uploaded: 'Live upload done',
+};
+
+const shortProductName = (name = 'Product') => (
+  name.length > 42 ? `${name.slice(0, 39)}...` : name
+);
+
+const actorName = (product: any, log?: any) => (
+  log?.user?.username || product.assignee?.username || 'A member'
+);
+
+const detectMajorSyncEvents = (previousProducts: any[], nextProducts: any[], currentUsername?: string | null) => {
+  const previousById = new Map(previousProducts.map((product) => [product.id, product]));
+  const events: { title: string; description: string }[] = [];
+
+  for (const product of nextProducts) {
+    const previous = previousById.get(product.id);
+    if (!previous) continue;
+
+    const productName = shortProductName(product.product_name);
+    const nextAssignee = product.assignee?.username || '';
+    const previousAssignee = previous.assignee?.username || '';
+
+    if (!previous.assigned_to && product.assigned_to && nextAssignee !== currentUsername) {
+      events.push({
+        title: 'Task claimed',
+        description: `${nextAssignee || 'A member'} claimed ${productName}.`,
+      });
+    }
+
+    if (previous.assigned_to && !product.assigned_to && previousAssignee !== currentUsername) {
+      events.push({
+        title: 'Task unclaimed',
+        description: `${previousAssignee || 'A member'} released ${productName}.`,
+      });
+    }
+
+    const previousLogIds = new Set((previous.actionLogs || []).map((log: any) => log.id));
+    const newMajorLogs = (product.actionLogs || [])
+      .filter((log: any) => !previousLogIds.has(log.id) && MAJOR_SYNC_ACTIONS[log.action])
+      .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    for (const log of newMajorLogs) {
+      const actor = actorName(product, log);
+      if (actor === currentUsername) continue;
+      events.push({
+        title: MAJOR_SYNC_ACTIONS[log.action],
+        description: `${actor} updated ${productName}.`,
+      });
+    }
+  }
+
+  return events.slice(0, 2);
+};
+
 function App() {
   installToastSounds();
 
@@ -41,20 +100,23 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const productsSignatureRef = useRef('');
+  const productsRef = useRef(products);
   const autoSyncStartedRef = useRef(false);
+
+  useEffect(() => {
+    productsRef.current = products;
+  }, [products]);
 
   // We are "imported" in server mode if we are logged in (have username and token)
   const isSessionActive = connectionMode === 'server' ? (!!token && !!username) : isImported;
 
-  const handleRefreshTasks = useCallback(async (options?: { silent?: boolean; notifyOnChange?: boolean }) => {
+  const handleRefreshTasks = useCallback(async (options?: { silent?: boolean }) => {
     if (connectionMode !== 'server' || !token) return;
     const silent = options?.silent ?? false;
     if (!silent) setRefreshing(true);
     try {
       const fetched = await fetchWithAuth('/products');
       const nextSignature = buildProductsSignature(fetched);
-      const previousSignature = productsSignatureRef.current;
-      const hasChanged = previousSignature !== '' && previousSignature !== nextSignature;
       // Map API Products to Extension internal format
       const mapped = fetched.map((p: any) => ({
         id: p.id,
@@ -88,15 +150,17 @@ function App() {
         referenceOpened: false
       }));
 
+      if (silent) {
+        const events = detectMajorSyncEvents(productsRef.current, mapped, username);
+        events.forEach((event) => toast.info(event.title, { description: event.description }));
+      }
+
       setProducts(mapped);
+      productsRef.current = mapped;
       productsSignatureRef.current = nextSignature;
       if (!silent) {
         toast.success('Tasks synced from server', {
           description: `${mapped.length} product${mapped.length === 1 ? '' : 's'} loaded for ${username || 'this member'}.`,
-        });
-      } else if (options?.notifyOnChange && hasChanged) {
-        toast.info('Tasks updated by another member', {
-          description: 'Your list was refreshed automatically with the latest server changes.',
         });
       }
     } catch (err: any) {
@@ -120,7 +184,7 @@ function App() {
     autoSyncStartedRef.current = true;
     const intervalId = window.setInterval(() => {
       if (!autoSyncStartedRef.current || document.visibilityState === 'hidden') return;
-      handleRefreshTasks({ silent: true, notifyOnChange: true });
+      handleRefreshTasks({ silent: true });
     }, 20000);
 
     return () => {

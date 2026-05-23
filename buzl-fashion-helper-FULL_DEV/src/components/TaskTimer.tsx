@@ -81,6 +81,9 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
   const [savingRegen, setSavingRegen] = useState(false);
   const [postOpen, setPostOpen] = useState(false);
   const [nowTick, setNowTick] = useState<number | null>(null);
+  const toastProductName = product.product_name.length > 42
+    ? `${product.product_name.slice(0, 39)}...`
+    : product.product_name;
 
   const latestLogs = useMemo(() => {
     return LOG_TRACKED_STEPS.reduce<Partial<Record<TimerAction, ProductActionLog>>>((logs, step) => {
@@ -127,14 +130,18 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
 
   const commitTimerAction = async (action: TimerAction, generatedCountToStore: number | null) => {
     if (!canEdit) {
-      toast.error('Only the assigned member or admin can log this timer');
+      toast.error('Timer not allowed', {
+        description: `${toastProductName} can only be timed by the assigned member or an admin.`,
+      });
       return;
     }
 
     const step = TIMER_STEPS.find((item) => item.action === action);
     const existingLog = latestLogs[action];
     if (existingLog) {
-      toast.info(`${step?.label || 'Timer step'} already logged`);
+      toast.info(`${step?.label || 'Timer step'} already logged`, {
+        description: `${toastProductName} has this step recorded at ${formatFullTime(existingLog.createdAt)}.`,
+      });
       return;
     }
 
@@ -153,9 +160,13 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
       } else {
         onProductUpdated(updated);
       }
-      toast.success(`${step?.label || 'Timer'} logged`);
+      toast.success(`${step?.label || 'Timer'} logged`, {
+        description: `${toastProductName} was updated. ${generatedCountToStore !== null ? `Generated images: ${generatedCountToStore}.` : 'Dashboard and extension will sync shortly.'}`,
+      });
     } catch (error: any) {
-      toast.error(error.message || 'Timer update failed');
+      toast.error(`${step?.label || 'Timer'} was not saved`, {
+        description: error.message || `${toastProductName} could not be updated. Refresh and try again.`,
+      });
     } finally {
       setSavingAction(null);
     }
@@ -167,7 +178,9 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
       if (input === null) return;
       const parsed = Number.parseInt(input, 10);
       if (!Number.isFinite(parsed) || parsed < 0) {
-        toast.error('Enter a valid non-negative number');
+        toast.error('Generated image count is invalid', {
+          description: 'Enter 0 or a positive whole number before finishing generation.',
+        });
         return;
       }
       await commitTimerAction(action, parsed);
@@ -179,14 +192,18 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
 
   const handleRegeneration = async () => {
     if (!canEdit) {
-      toast.error('Only the assigned member or admin can log this timer');
+      toast.error('Re-gen not allowed', {
+        description: `${toastProductName} can only be updated by the assigned member or an admin.`,
+      });
       return;
     }
     const input = window.prompt('Full re-gen: how many images were regenerated this time?', '1');
     if (input === null) return;
     const parsedCount = Number.parseInt(input, 10);
     if (!Number.isFinite(parsedCount) || parsedCount <= 0) {
-      toast.error('Enter a positive number');
+      toast.error('Re-gen image count is invalid', {
+        description: 'Enter at least 1 image for a full regeneration log.',
+      });
       return;
     }
 
@@ -203,9 +220,13 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
       });
       onProductUpdated({ ...updated, full_regen_image_count: patched.full_regen_image_count });
       const nextCount = (updated.actionLogs || []).filter((log: ProductActionLog) => log.action === REGEN_ACTION).length;
-      toast.success(`Re-gen attempts: ${nextCount}. Full re-gen images +${parsedCount}`);
+      toast.success(`Re-gen logged for ${toastProductName}`, {
+        description: `Full re-gen attempts: ${nextCount}. Full re-gen images added: ${parsedCount}.`,
+      });
     } catch (error: any) {
-      toast.error(error.message || 'Re-gen update failed');
+      toast.error('Re-gen was not saved', {
+        description: error.message || `${toastProductName} could not be updated. Refresh and try again.`,
+      });
     } finally {
       setSavingRegen(false);
     }
@@ -213,7 +234,9 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
 
   const handleResetTimerAction = async (action: TimerAction) => {
     if (!canEdit) {
-      toast.error('Only the assigned member or admin can edit this timer');
+      toast.error('Timer reset not allowed', {
+        description: `${toastProductName} can only be reset by the assigned member or an admin.`,
+      });
       return;
     }
 
@@ -225,9 +248,13 @@ export const TaskTimer: React.FC<TaskTimerProps> = ({
         body: JSON.stringify({ action }),
       });
       onProductUpdated(updated);
-      toast.success(`${step?.label || 'Timer'} reset`);
+      toast.success(`${step?.label || 'Timer'} reset`, {
+        description: `${toastProductName} and dependent timing totals were recalculated.`,
+      });
     } catch (error: any) {
-      toast.error(error.message || 'Timer reset failed');
+      toast.error(`${step?.label || 'Timer'} reset failed`, {
+        description: error.message || `${toastProductName} could not be updated. Refresh and try again.`,
+      });
     } finally {
       setResettingAction(null);
     }

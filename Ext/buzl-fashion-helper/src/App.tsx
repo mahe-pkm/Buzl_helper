@@ -91,12 +91,18 @@ function App() {
       setProducts(mapped);
       productsSignatureRef.current = nextSignature;
       if (!silent) {
-        toast.success('Tasks updated from server');
+        toast.success('Tasks synced from server', {
+          description: `${mapped.length} product${mapped.length === 1 ? '' : 's'} loaded for ${username || 'this member'}.`,
+        });
       } else if (options?.notifyOnChange && hasChanged) {
-        toast.info('Tasks updated by another member');
+        toast.info('Tasks updated by another member', {
+          description: 'Your list was refreshed automatically with the latest server changes.',
+        });
       }
     } catch (err: any) {
-      if (!silent) toast.error('Failed to sync tasks with server');
+      if (!silent) toast.error('Server sync failed', {
+        description: err.message || 'Check the API URL in settings, then use refresh again.',
+      });
     } finally {
       if (!silent) setRefreshing(false);
     }

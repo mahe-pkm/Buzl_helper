@@ -38,12 +38,16 @@ function App() {
         productsSignatureRef.current = buildProductsSignature(products);
         setProducts(products);
       })
-      .catch(() => toast.error('Failed to fetch products'));
+      .catch(() => toast.error('Products could not load', {
+        description: 'Check that the API server is reachable, then refresh the dashboard.',
+      }));
 
     if (authUser.role === 'admin') {
       fetchWithAuth('/users')
         .then(setWorkers)
-        .catch(() => toast.error('Failed to fetch members'));
+        .catch(() => toast.error('Members could not load', {
+          description: 'Product data may still work, but member filters and assignment may be incomplete.',
+        }));
     }
   }, [authUser, setProducts, setWorkers]);
 
@@ -58,7 +62,9 @@ function App() {
         const previousSignature = productsSignatureRef.current;
         if (previousSignature && previousSignature !== nextSignature) {
           setProducts(products);
-          toast.info('Tasks updated by another member');
+          toast.info('Tasks updated by another member', {
+            description: 'Dashboard data was refreshed automatically from the server.',
+          });
         }
         productsSignatureRef.current = nextSignature;
       } catch {

@@ -144,7 +144,9 @@ export const AdminView: React.FC = () => {
   const refresh = async () => {
     const [prods, wrks, cats] = await Promise.all([fetchWithAuth('/products'), fetchWithAuth('/users'), fetchWithAuth('/categories')]);
     setProducts(prods); setWorkers(wrks); setCategoriesMaster(cats);
-    toast.success('Refreshed');
+    toast.success('Dashboard refreshed', {
+      description: `${prods.length} products, ${wrks.length} members, and ${cats.length} categories loaded.`,
+    });
   };
 
   useEffect(() => {
@@ -163,13 +165,23 @@ export const AdminView: React.FC = () => {
   }, []);
 
   const handleFileUpload = async (file: File) => {
-    if (!file.name.endsWith('.csv')) { toast.error('Upload a .csv file'); return; }
+    if (!file.name.endsWith('.csv')) {
+      toast.error('CSV upload blocked', {
+        description: `${file.name} is not a .csv file.`,
+      });
+      return;
+    }
     
     const executeUpload = async () => {
       setUploading(true);
       try {
         const parsed = await parseCSV(file);
-        if (!parsed.length) { toast.error('CSV is empty'); return; }
+        if (!parsed.length) {
+          toast.error('CSV is empty', {
+            description: `${file.name} did not contain any valid product rows.`,
+          });
+          return;
+        }
         
         // Apply global reference link if row doesn't have one
         const productsToUpload = parsed.map(p => ({
@@ -181,8 +193,14 @@ export const AdminView: React.FC = () => {
         await fetchWithAuth('/products', { method: 'POST', body: JSON.stringify({ products: productsToUpload, replace: replaceMode }) });
         setProducts(await fetchWithAuth('/products'));
         setSelectedIds(new Set());
-        toast.success(`✅ ${parsed.length} products ${replaceMode ? 'replaced' : 'added'}`);
-      } catch (e: any) { toast.error(e.message || 'Upload failed'); }
+        toast.success(`${parsed.length} products ${replaceMode ? 'replaced' : 'added'}`, {
+          description: `Category: ${normalizeCategory(importCategory)}. Reference link ${globalRefLink ? 'applied where missing' : 'not provided'}.`,
+        });
+      } catch (e: any) {
+        toast.error('CSV import failed', {
+          description: e.message || 'Products were not saved. Check the file and try again.',
+        });
+      }
       finally { setUploading(false); }
     };
 
@@ -216,7 +234,9 @@ export const AdminView: React.FC = () => {
     const API_KEY = import.meta.env.VITE_GOOGLE_DRIVE_API_KEY;
     if (!API_KEY) {
       setDriveLog(['Google Drive API key is missing. Add VITE_GOOGLE_DRIVE_API_KEY to buzl-fashion-helper-FULL_DEV/.env and restart Vite.']);
-      toast.error('Missing VITE_GOOGLE_DRIVE_API_KEY');
+      toast.error('Google Drive API key is missing', {
+        description: 'Add VITE_GOOGLE_DRIVE_API_KEY, then restart the dashboard.',
+      });
       return;
     }
 
@@ -280,7 +300,9 @@ export const AdminView: React.FC = () => {
     try {
       await fetchFolders(folderId);
       if (allFolders.length === 0) {
-        toast.error('No folders found or access denied (is the folder public?)');
+        toast.error('No Drive folders found', {
+          description: 'Make sure the folder is public and contains product subfolders.',
+        });
         setDriveImporting(false);
         return;
       }
@@ -299,8 +321,13 @@ export const AdminView: React.FC = () => {
       });
       setDriveFoundFolders(mapped);
       setDriveImportStep(2);
+      toast.success('Drive folders extracted', {
+        description: `${mapped.length} folders found. ${mapped.filter((item) => item.exists).length} already exist in products.`,
+      });
     } catch (err: any) {
-      toast.error('Failed to extract Google Drive link');
+      toast.error('Drive extraction failed', {
+        description: err.message || 'The folder link could not be read. Check access and try again.',
+      });
     }
     setDriveImporting(false);
   };
@@ -323,9 +350,15 @@ export const AdminView: React.FC = () => {
       await fetchWithAuth('/products', { method: 'POST', body: JSON.stringify({ products: productsToUpload, replace: replaceMode }) });
       setProducts(await fetchWithAuth('/products'));
       setSelectedIds(new Set());
-      toast.success(`✅ ${selected.length} folders imported from Drive!`);
+      toast.success(`${selected.length} Drive folders imported`, {
+        description: `Category: ${normalizeCategory(importCategory)}. Reference link ${globalRefLink ? 'attached' : 'not provided'}.`,
+      });
       setDriveImportOpen(false);
-    } catch (err: any) { toast.error(err.message || 'Failed to save products to database'); }
+    } catch (err: any) {
+      toast.error('Drive import failed', {
+        description: err.message || 'Selected folders were not saved to the database.',
+      });
+    }
     setDriveImporting(false);
   };
 
@@ -697,7 +730,12 @@ export const AdminView: React.FC = () => {
   }, [products]);
   const categoryOptions = useMemo(() => categoriesMaster.map((c) => c.name), [categoriesMaster]);
 
-  const copyText = (text: string, label = 'Copied!') => { navigator.clipboard.writeText(text); toast.success(label); };
+  const copyText = (text: string, label = 'Copied!') => {
+    navigator.clipboard.writeText(text);
+    toast.success(label, {
+      description: 'Copied to clipboard and ready to paste.',
+    });
+  };
 
   return (
     <div className="min-h-[100dvh] bg-gray-100 flex flex-col relative" style={{ fontFamily: "'Inter', sans-serif" }}>

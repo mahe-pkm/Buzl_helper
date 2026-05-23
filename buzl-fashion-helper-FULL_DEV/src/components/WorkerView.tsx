@@ -142,7 +142,9 @@ export const WorkerView: React.FC = () => {
       await fetchWithAuth(`/products/${product.id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
     } catch {
       setProducts(products.map(p => p.id === product.id ? { ...p, status: prev } : p));
-      toast.error('Update failed');
+      toast.error('Status was not saved', {
+        description: `${product.product_name} stayed ${prev}. Refresh and try again.`,
+      });
     } finally { setUpdatingId(null); }
   };
 
@@ -151,8 +153,15 @@ export const WorkerView: React.FC = () => {
       await fetchWithAuth(`/products/${productId}/notes`, { method: 'PATCH', body: JSON.stringify({ notes: noteText }) });
       setProducts(products.map(p => p.id === productId ? { ...p, notes: noteText } : p));
       setEditingNoteId(null);
-      toast.success('Note saved');
-    } catch { toast.error('Note save failed'); }
+      const productName = products.find((p) => p.id === productId)?.product_name || 'Product';
+      toast.success('Note saved', {
+        description: `${productName} note was updated for the team.`,
+      });
+    } catch {
+      toast.error('Note was not saved', {
+        description: 'The note stayed local only. Refresh and try again.',
+      });
+    }
   };
 
   const handleClaim = async (product: Product) => {
@@ -160,8 +169,14 @@ export const WorkerView: React.FC = () => {
     try {
       await fetchWithAuth(`/products/${product.id}/assign`, { method: 'PATCH', body: JSON.stringify({ assigned_to: authUser?.id }) });
       setProducts(products.map(p => p.id === product.id ? { ...p, assigned_to: authUser?.id, assignee: { id: authUser?.id, username: authUser?.username } } : p));
-      toast.success(`"${product.product_name}" claimed!`);
-    } catch { toast.error('Claim failed'); }
+      toast.success('Task claimed', {
+        description: `${product.product_name} is now assigned to ${authUser?.username || 'you'}.`,
+      });
+    } catch {
+      toast.error('Claim failed', {
+        description: `${product.product_name} could not be assigned. Refresh and try again.`,
+      });
+    }
     finally { setClaimingId(null); }
   };
 
@@ -274,7 +289,7 @@ export const WorkerView: React.FC = () => {
             </h3>
             <div className="flex items-center gap-1 flex-shrink-0">
               {statusBadge(product)}
-              <button onClick={() => { navigator.clipboard.writeText(product.product_name); toast.success('Copied!'); }} className="text-gray-400 hover:text-gray-600 p-0.5">
+              <button onClick={() => { navigator.clipboard.writeText(product.product_name); toast.success('Product name copied', { description: `${product.product_name} is ready to paste.` }); }} className="text-gray-400 hover:text-gray-600 p-0.5">
                 <Copy size={11} />
               </button>
               <button
@@ -328,7 +343,7 @@ export const WorkerView: React.FC = () => {
                   <span className="font-medium text-blue-800 text-[11px] truncate pr-2 max-w-[42vw] sm:max-w-[160px]" title={product.drive_folder}>Drive Folder</span>
                   <div className="flex gap-1 flex-shrink-0">
                     <button onClick={() => window.open(product.drive_folder, '_blank')} className="p-1 rounded text-blue-600 hover:bg-blue-100"><ExternalLink size={12} /></button>
-                    <button onClick={() => { navigator.clipboard.writeText(product.drive_folder); toast.success('Copied!'); }} className="p-1 rounded text-blue-600 hover:bg-blue-100"><Copy size={12} /></button>
+                    <button onClick={() => { navigator.clipboard.writeText(product.drive_folder); toast.success('Drive folder copied', { description: `${product.product_name} folder link is ready to paste.` }); }} className="p-1 rounded text-blue-600 hover:bg-blue-100"><Copy size={12} /></button>
                   </div>
                 </div>
               )}
@@ -339,7 +354,7 @@ export const WorkerView: React.FC = () => {
                   <span className="font-medium text-purple-800 text-[11px] truncate pr-2 max-w-[42vw] sm:max-w-[160px]" title={product.reference_link}>Reference Link</span>
                   <div className="flex gap-1 flex-shrink-0">
                     <button onClick={() => window.open(product.reference_link!, '_blank')} className="p-1 rounded text-purple-600 hover:bg-purple-100"><ExternalLink size={12} /></button>
-                    <button onClick={() => { navigator.clipboard.writeText(product.reference_link!); toast.success('Copied!'); }} className="p-1 rounded text-purple-600 hover:bg-purple-100"><Copy size={12} /></button>
+                    <button onClick={() => { navigator.clipboard.writeText(product.reference_link!); toast.success('Reference link copied', { description: `${product.product_name} reference link is ready to paste.` }); }} className="p-1 rounded text-purple-600 hover:bg-purple-100"><Copy size={12} /></button>
                   </div>
                 </div>
               )}

@@ -42,7 +42,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
     e.preventDefault();
     if (!inputUsername) return;
     if (!inputPassword) {
-      toast.error('Password is required.');
+      toast.error('Password is required', {
+        description: 'Members must login with both username and password created by admin.',
+      });
       return;
     }
 
@@ -54,7 +56,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
       });
 
       setCredentials(data.user.username, data.token, data.user.id);
-      toast.success(`Successfully logged in as ${data.user.username}!`);
+      toast.success(`Logged in as ${data.user.username}`, {
+        description: 'Fetching your live assigned and available tasks now.',
+      });
       
       // Pull tasks immediately upon login
       if (onRefreshTasks) {
@@ -64,7 +68,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
         setProducts(fetched);
       }
     } catch (err: any) {
-      toast.error(err.message || 'Login failed. Verify your server URL & credentials.');
+      toast.error('Login failed', {
+        description: err.message || 'Verify the API URL, username, and password in settings.',
+      });
     } finally {
       setLoggingIn(false);
     }
@@ -73,7 +79,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
   const handleLogout = () => {
     setCredentials(null, null, null);
     setProducts([]);
-    toast.success('Logged out of server');
+    toast.success('Logged out', {
+      description: 'Server tasks were cleared from this extension session.',
+    });
   };
 
   return (

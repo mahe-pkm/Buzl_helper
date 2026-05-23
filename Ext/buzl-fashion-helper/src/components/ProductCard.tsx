@@ -214,6 +214,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     [localMainThumb, product.thumbnail_cached_data, product.thumbnail_url, product.drive_folder],
   );
   const [thumbnailIndex, setThumbnailIndex] = useState(0);
+  const toastProductName = product.product_name.length > 42
+    ? `${product.product_name.slice(0, 39)}...`
+    : product.product_name;
 
   useEffect(() => {
     setLocalNotes(product.notes || '');
@@ -365,7 +368,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
   const copyToClipboard = async (text: string, type: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      toast.success(`${type} copied!`);
+      toast.success(`${type} copied`, {
+        description: `${toastProductName} is ready to paste.`,
+      });
 
       const resetKey =
         type === 'Product Name'
@@ -385,7 +390,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
         }, 1200);
       }
     } catch (err) {
-      toast.error('Failed to copy');
+      toast.error(`Could not copy ${type}`, {
+        description: 'Browser clipboard permission blocked the copy action. Try the copy button again.',
+      });
     }
   };
 
@@ -397,7 +404,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
 
   const handleToggleComplete = async () => {
     if (connectionMode === 'server' && !isMine) {
-      toast.error('Claim this task before changing status');
+      toast.error('Task must be claimed first', {
+        description: `${toastProductName} is assigned to another member or still unassigned.`,
+      });
       return;
     }
 
@@ -416,14 +425,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
       } catch (err: any) {
         // Rollback on error
         updateProduct(product.id, { completed: !nextCompleted, status: product.status });
-        toast.error('Failed to sync status with server');
+        toast.error('Status was not saved', {
+          description: `${toastProductName} stayed ${product.status}. Refresh and try again.`,
+        });
       }
     }
   };
 
   const handleClaimTask = async () => {
     if (!userId) {
-      toast.error('Login again before claiming tasks');
+      toast.error('Login required', {
+        description: 'Your session is missing. Open settings and login again before claiming tasks.',
+      });
       return;
     }
 
@@ -438,9 +451,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
           ? { ...p, assigned_to: updated.assigned_to, assignee: updated.assignee || { id: userId, username: username || '' } }
           : p
       )));
-      toast.success('Task claimed');
+      toast.success('Task claimed', {
+        description: `${toastProductName} is now assigned to ${updated.assignee?.username || username || 'you'}.`,
+      });
     } catch (err: any) {
-      toast.error(err.message || 'Claim failed');
+      toast.error('Claim failed', {
+        description: err.message || `${toastProductName} could not be assigned. Refresh and try again.`,
+      });
     } finally {
       setAssigning(false);
     }
@@ -456,9 +473,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
       setProducts(products.map((p) => (
         p.id === product.id ? { ...p, assigned_to: null, assignee: null } : p
       )));
-      toast.success('Task moved back to unassigned');
+      toast.success('Task unassigned', {
+        description: `${toastProductName} is available for another member to claim.`,
+      });
     } catch (err: any) {
-      toast.error(err.message || 'Unassign failed');
+      toast.error('Unassign failed', {
+        description: err.message || `${toastProductName} could not be released. Refresh and try again.`,
+      });
     } finally {
       setAssigning(false);
     }
@@ -469,12 +490,16 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     const existingLog = latestTimerLogs[action];
 
     if (existingLog) {
-      toast.info(`${step?.label || 'Timer step'} already logged`);
+      toast.info(`${step?.label || 'Timer step'} already logged`, {
+        description: `${toastProductName} has this step recorded at ${formatTimerTime(existingLog.createdAt)}.`,
+      });
       return;
     }
 
     if (connectionMode === 'server' && !isMine) {
-      toast.error('Claim this task before logging time');
+      toast.error('Claim required before timing', {
+        description: `${toastProductName} must be assigned to you before this step can be logged.`,
+      });
       return;
     }
 
@@ -497,10 +522,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
         }
         const milestoneShown = showMilestoneToast(action);
         if (!milestoneShown) {
-          toast.success(`${step?.label || 'Timer'} logged`);
+          toast.success(`${step?.label || 'Timer'} logged`, {
+            description: `${toastProductName} was updated at ${formatTimerTime(new Date().toISOString())}.`,
+          });
         }
       } catch (err: any) {
-        toast.error(err.message || 'Timer update failed');
+        toast.error(`${step?.label || 'Timer'} was not saved`, {
+          description: err.message || `${toastProductName} did not update on the server. Try refresh, then log again.`,
+        });
       } finally {
         setLoggingAction(null);
       }
@@ -523,7 +552,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     setLoggingAction(null);
     const milestoneShown = showMilestoneToast(action);
     if (!milestoneShown) {
-      toast.success(`${step?.label || 'Timer'} logged`);
+      toast.success(`${step?.label || 'Timer'} logged locally`, {
+        description: `${toastProductName} was updated in this browser session.`,
+      });
     }
   };
 
@@ -541,7 +572,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
   const confirmGeneratedCountAndComplete = async () => {
     const parsed = Number.parseInt(generatedCountDraft || '0', 10);
     if (!Number.isFinite(parsed) || parsed < 0) {
-      toast.error('Enter a valid non-negative number');
+      toast.error('Generated image count is invalid', {
+        description: 'Enter 0 or a positive whole number before finishing generation.',
+      });
       return;
     }
 
@@ -551,7 +584,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
 
   const handleRegenerationAction = async () => {
     if (connectionMode === 'server' && !isMine) {
-      toast.error('Claim this task before logging re-gen');
+      toast.error('Claim required before re-gen', {
+        description: `${toastProductName} must be assigned to you before logging regeneration.`,
+      });
       return;
     }
 
@@ -564,15 +599,21 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
       if (typeof countInput === 'string' && countInput.trim() !== '') {
         const parsed = Number.parseInt(countInput, 10);
         if (!Number.isFinite(parsed) || parsed <= 0) {
-          toast.error('Enter a positive number');
+          toast.error('Re-gen image count is invalid', {
+            description: 'Enter at least 1 image for a full regeneration log.',
+          });
           return;
         }
         parsedCount = parsed;
       } else if (countInput === null) {
-        toast.info('Re-gen logged with default count 1');
+        toast.info('Using default re-gen image count', {
+          description: `${toastProductName} will add 1 full re-gen image.`,
+        });
       }
     } catch {
-      toast.info('Re-gen logged with default count 1');
+      toast.info('Using default re-gen image count', {
+        description: `${toastProductName} will add 1 full re-gen image.`,
+      });
     }
 
     setLoggingRegen(true);
@@ -590,9 +631,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
         });
         mergeServerProductUpdate({ ...updated, full_regen_image_count: patched.full_regen_image_count });
         const nextCount = (updated.actionLogs || []).filter((log: ProductActionLog) => log.action === REGEN_ACTION).length;
-        toast.success(`Re-gen logged. Attempts: ${nextCount}. Full re-gen images +${parsedCount}`);
+        toast.success(`Re-gen logged for ${toastProductName}`, {
+          description: `Full re-gen attempts: ${nextCount}. Full re-gen images added: ${parsedCount}.`,
+        });
       } catch (err: any) {
-        toast.error(err.message || 'Re-gen update failed');
+        toast.error('Re-gen was not saved', {
+          description: err.message || `${toastProductName} could not be updated. Refresh and try again.`,
+        });
       } finally {
         setLoggingRegen(false);
       }
@@ -612,7 +657,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
       last_action: 'Regeneration requested',
     });
     setLoggingRegen(false);
-    toast.success(`Re-gen logged. Attempts: ${regenCount + 1}. Full re-gen images +${parsedCount}`);
+    toast.success(`Re-gen logged locally for ${toastProductName}`, {
+      description: `Full re-gen attempts: ${regenCount + 1}. Full re-gen images added: ${parsedCount}.`,
+    });
   };
 
   const saveRegenImageCount = async () => {
@@ -627,7 +674,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
         });
         mergeServerProductUpdate(updated);
       } catch (err: any) {
-        toast.error(err.message || 'Failed to save re-gen image count');
+        toast.error('Re-gen image count was not saved', {
+          description: err.message || `${toastProductName} could not be updated. Refresh and try again.`,
+        });
         return;
       }
     } else {
@@ -635,14 +684,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     }
 
     setEditingRegenImageCount(false);
-    toast.success('Re-gen image count updated');
+    toast.success('Re-gen image count updated', {
+      description: `${toastProductName} now has ${safeCount} partial re-gen image${safeCount === 1 ? '' : 's'}.`,
+    });
   };
 
   const handleResetTimerAction = async (action: TimerAction) => {
     const step = TIMER_STEPS.find((item) => item.action === action);
 
     if (!canEditTimers) {
-      toast.error('Claim this task before editing timers');
+      toast.error('Claim required before reset', {
+        description: `${toastProductName} must be assigned to you before timer steps can be reset.`,
+      });
       return;
     }
 
@@ -655,9 +708,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
           body: JSON.stringify({ action }),
         });
         mergeServerProductUpdate(updated);
-        toast.success(`${step?.label || 'Timer'} reset`);
+        toast.success(`${step?.label || 'Timer'} reset`, {
+          description: `${toastProductName} and later dependent steps were recalculated.`,
+        });
       } catch (err: any) {
-        toast.error(err.message || 'Timer reset failed');
+        toast.error(`${step?.label || 'Timer'} reset failed`, {
+          description: err.message || `${toastProductName} could not be updated. Refresh and try again.`,
+        });
       } finally {
         setResettingAction(null);
       }
@@ -678,7 +735,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
     }
 
     if (nextLogs.length === existingLogs.length) {
-      toast.info('Timer step not logged yet');
+      toast.info('Nothing to reset', {
+        description: `${toastProductName} does not have this timer step logged yet.`,
+      });
       setResettingAction(null);
       return;
     }
@@ -688,7 +747,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
       ...deriveProductStateFromLogs(nextLogs),
     });
     setResettingAction(null);
-    toast.success(`${step?.label || 'Timer'} reset`);
+    toast.success(`${step?.label || 'Timer'} reset locally`, {
+      description: `${toastProductName} and later dependent steps were recalculated.`,
+    });
   };
 
   const handleSaveNotes = async (text: string) => {
@@ -702,7 +763,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
           body: JSON.stringify({ notes: text }),
         });
       } catch (err: any) {
-        toast.error('Failed to save notes to server');
+        toast.error('Note was not saved', {
+          description: `${toastProductName} kept the local text, but the server update failed.`,
+        });
       } finally {
         setSavingNote(false);
       }

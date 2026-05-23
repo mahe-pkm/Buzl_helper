@@ -411,7 +411,9 @@ export const WorkerView: React.FC = () => {
       {/* Header */}
       <header className="flex-shrink-0 bg-gray-900 text-white px-4 py-3 flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <img src="/logo-icon.png" alt="" className="h-7 w-7 rounded-lg shadow-sm ring-1 ring-white/15" />
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white p-0.5 shadow-sm ring-1 ring-white/30">
+            <img src="/logo-icon.png" alt="" className="h-full w-full rounded-md" />
+          </span>
           <span className="font-bold text-sm">Buzl Helper</span>
         </div>
         <div className="flex items-center gap-2">

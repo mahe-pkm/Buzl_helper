@@ -71,6 +71,8 @@ export const AdminView: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkWorker, setBulkWorker] = useState('');
   const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkStatusUpdating, setBulkStatusUpdating] = useState(false);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
   const [resettingStatusId, setResettingStatusId] = useState<string | null>(null);
@@ -454,6 +456,40 @@ export const AdminView: React.FC = () => {
         toast.success(`Updated category for ${ids.length} products`);
       } catch {
         toast.error('Bulk category update failed');
+      }
+    });
+  };
+
+  const handleBulkStatusUpdate = async () => {
+    if (selectedIds.size === 0 || !bulkStatus) return;
+    const ids = Array.from(selectedIds);
+    const statusLabel =
+      bulkStatus === 'in-progress'
+        ? 'In Progress'
+        : bulkStatus.charAt(0).toUpperCase() + bulkStatus.slice(1);
+
+    askConfirm(`Update status to ${statusLabel} for ${ids.length} selected products?`, async () => {
+      setBulkStatusUpdating(true);
+      try {
+        await Promise.all(
+          ids.map((id) =>
+            fetchWithAuth(`/products/${id}/status`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status: bulkStatus }),
+            })
+          )
+        );
+        const fresh = await fetchWithAuth('/products');
+        setProducts(fresh);
+        setSelectedIds(new Set());
+        setBulkStatus('');
+        toast.success(`Updated status for ${ids.length} products`, {
+          description: `New status: ${statusLabel}.`,
+        });
+      } catch {
+        toast.error('Bulk status update failed');
+      } finally {
+        setBulkStatusUpdating(false);
       }
     });
   };
@@ -1068,7 +1104,7 @@ export const AdminView: React.FC = () => {
               </div>
               {/* Bulk assign bar */}
               {selectedIds.size > 0 && (
-                <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex items-center gap-3">
+                <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex flex-wrap items-center gap-3">
                   <span className="text-xs font-semibold text-blue-700">{selectedIds.size} selected</span>
                   <select value={bulkWorker} onChange={e => setBulkWorker(e.target.value)} className="text-xs border border-blue-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none">
                     <option value="">-- Pick Member --</option>
@@ -1088,6 +1124,24 @@ export const AdminView: React.FC = () => {
                     className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700"
                   >
                     Move Category
+                  </button>
+                  <div className="h-4 w-px bg-blue-200 mx-1"></div>
+                  <select
+                    value={bulkStatus}
+                    onChange={e => setBulkStatus(e.target.value)}
+                    className="text-xs border border-blue-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none min-w-[120px]"
+                  >
+                    <option value="">-- Status --</option>
+                    <option value="pending">Pending</option>
+                    <option value="in-progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                  <button
+                    onClick={handleBulkStatusUpdate}
+                    disabled={!bulkStatus || bulkStatusUpdating}
+                    className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                  >
+                    {bulkStatusUpdating ? 'Updating...' : 'Update Status'}
                   </button>
                   <button
                     onClick={handleBulkResetStatus}

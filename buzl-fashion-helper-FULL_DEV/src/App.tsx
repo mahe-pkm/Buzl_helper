@@ -83,6 +83,20 @@ const detectMajorSyncEvents = (previousProducts: any[], nextProducts: any[], cur
   return events.slice(0, 2);
 };
 
+const mergeProductSnapshots = (previousProducts: any[], nextProducts: any[]) => {
+  const previousById = new Map(previousProducts.map((product) => [product.id, product]));
+  return nextProducts.map((product) => {
+    const previous = previousById.get(product.id);
+    if (!previous) return product;
+    return {
+      ...previous,
+      ...product,
+      thumbnail_cached_data: product.thumbnail_cached_data ?? previous.thumbnail_cached_data ?? null,
+      reference_thumbnail_cached_data: product.reference_thumbnail_cached_data ?? previous.reference_thumbnail_cached_data ?? null,
+    };
+  });
+};
+
 function App() {
   installToastSounds();
 
@@ -118,15 +132,16 @@ function App() {
     const syncProducts = async () => {
       if (document.visibilityState === 'hidden') return;
       try {
-        const products = await fetchWithAuth('/products');
+        const products = await fetchWithAuth('/products?lite=1');
+        const mergedProducts = mergeProductSnapshots(productsRef.current, products);
         const nextSignature = buildProductsSignature(products);
         const previousSignature = productsSignatureRef.current;
         if (previousSignature && previousSignature !== nextSignature) {
           detectMajorSyncEvents(productsRef.current, products, authUser.username)
             .forEach((event) => toast.info(event.title, { description: event.description }));
-          setProducts(products);
+          setProducts(mergedProducts);
         }
-        productsRef.current = products;
+        productsRef.current = mergedProducts;
         productsSignatureRef.current = nextSignature;
       } catch {
         // Keep background sync quiet; manual refresh still reports failures.

@@ -31,6 +31,46 @@ export async function GET(req: NextRequest) {
   const authUser = getUserFromRequest(req);
   if (!authUser) return jsonWithCors(req, { error: "Unauthorized" }, { status: 401 });
   try {
+    const lite = req.nextUrl.searchParams.get("lite") === "1";
+    if (lite) {
+      const products = await prisma.product.findMany({
+        select: {
+          id: true,
+          product_name: true,
+          category: true,
+          drive_folder: true,
+          reference_link: true,
+          thumbnail_url: true,
+          reference_thumbnail_url: true,
+          status: true,
+          current_phase: true,
+          regen_image_count: true,
+          generated_image_count: true,
+          full_regen_image_count: true,
+          notes: true,
+          assigned_to: true,
+          assignedAt: true,
+          lastActivityAt: true,
+          last_action: true,
+          createdAt: true,
+          updatedAt: true,
+          assignee: { select: { id: true, username: true } },
+          actionLogs: {
+            take: 12,
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              action: true,
+              createdAt: true,
+              user: { select: { id: true, username: true } },
+            },
+          },
+        },
+        orderBy: [{ lastActivityAt: "desc" }, { updatedAt: "desc" }],
+      });
+      return jsonWithCors(req, products);
+    }
+
     // Both admin and workers get ALL products with assignee info
     const products = await prisma.product.findMany({
       include: {

@@ -115,10 +115,12 @@ function App() {
     const silent = options?.silent ?? false;
     if (!silent) setRefreshing(true);
     try {
-      const fetched = await fetchWithAuth('/products');
+      const fetched = await fetchWithAuth(silent ? '/products?lite=1' : '/products');
       const nextSignature = buildProductsSignature(fetched);
+      const previousById = new Map(productsRef.current.map((product: any) => [product.id, product]));
       // Map API Products to Extension internal format
       const mapped = fetched.map((p: any) => ({
+        ...previousById.get(p.id),
         id: p.id,
         product_name: p.product_name,
         category: p.category ?? null,
@@ -126,8 +128,8 @@ function App() {
         reference_link: p.reference_link || undefined,
         reference_thumbnail_url: p.reference_thumbnail_url || null,
         thumbnail_url: p.thumbnail_url || undefined,
-        thumbnail_cached_data: p.thumbnail_cached_data || null,
-        reference_thumbnail_cached_data: p.reference_thumbnail_cached_data || null,
+        thumbnail_cached_data: p.thumbnail_cached_data ?? previousById.get(p.id)?.thumbnail_cached_data ?? null,
+        reference_thumbnail_cached_data: p.reference_thumbnail_cached_data ?? previousById.get(p.id)?.reference_thumbnail_cached_data ?? null,
         createdAt: p.createdAt || undefined,
         updatedAt: p.updatedAt || undefined,
         assignedAt: p.assignedAt || null,

@@ -57,6 +57,16 @@ interface CsvState {
   setCredentials: (username: string | null, token: string | null, userId?: string | null) => void;
 }
 
+const stripHeavyProductFields = (product: Product): Product => ({
+  ...product,
+  thumbnail_cached_data: null,
+  reference_thumbnail_cached_data: null,
+  actionLogs: [],
+  nameCopied: false,
+  driveCopied: false,
+  referenceCopied: false,
+});
+
 export const useCsvStore = create<CsvState>()(
   persist(
     (set) => ({
@@ -154,7 +164,33 @@ export const useCsvStore = create<CsvState>()(
     }),
     {
       name: 'buzl-csv-storage',
-      version: 9, // bumping version clears stale cached data
+      version: 10, // clear older localStorage snapshots that may contain thumbnail blobs
+      partialize: (state) => ({
+        products: state.connectionMode === 'local'
+          ? state.products.map(stripHeavyProductFields)
+          : [],
+        globalReferenceUrl: state.globalReferenceUrl,
+        isImported: state.connectionMode === 'local' ? state.isImported : false,
+        searchQuery: state.searchQuery,
+        activeFilter: state.activeFilter,
+        activeView: state.activeView,
+        activeWorkerFilter: state.activeWorkerFilter,
+        activeUnassignedOnly: state.activeUnassignedOnly,
+        activeCategoryFilter: state.activeCategoryFilter,
+        activeDateFilter: state.activeDateFilter,
+        expandedProductIds: state.expandedProductIds.slice(0, 100),
+        connectionMode: state.connectionMode,
+        serverEnvironment: state.serverEnvironment,
+        vercelUrl: state.vercelUrl,
+        hostingerUrl: state.hostingerUrl,
+        customUrl: state.customUrl,
+        dashboardVercelUrl: state.dashboardVercelUrl,
+        dashboardHostingerUrl: state.dashboardHostingerUrl,
+        dashboardCustomUrl: state.dashboardCustomUrl,
+        token: state.token,
+        userId: state.userId,
+        username: state.username,
+      }),
     }
   )
 );

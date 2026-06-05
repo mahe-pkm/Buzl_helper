@@ -48,7 +48,15 @@ export const useCsvStore = create<CsvState>()(
     }),
     {
       name: 'buzl-csv-storage',
-      version: 4,
+      version: 5, // clear older localStorage snapshots that may contain full product/image data
+      partialize: (state) => ({
+        authUser: state.authUser,
+        products: [],
+        workers: [],
+        globalReferenceUrl: state.globalReferenceUrl,
+        searchQuery: state.searchQuery,
+        activeFilter: state.activeFilter,
+      }),
     }
   )
 );

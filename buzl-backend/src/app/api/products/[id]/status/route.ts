@@ -32,7 +32,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       } 
     });
     return jsonWithCors(req, updated);
-  } catch {
-    return jsonWithCors(req, { error: "Update failed" }, { status: 500 });
+  } catch (err: any) {
+    console.error("STATUS PATCH ERROR:", err);
+    return jsonWithCors(req, { error: err?.message || "Update failed" }, { status: 500 });
   }
 }

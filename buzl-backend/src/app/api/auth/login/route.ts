@@ -39,7 +39,9 @@ export async function POST(req: NextRequest) {
 
     const token = signToken({ id: user.id, username: user.username, role: user.role });
     return jsonWithCors(req, { token, user: { id: user.id, username: user.username, role: user.role } });
-  } catch {
-    return jsonWithCors(req, { error: "Internal server error" }, { status: 500 });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("LOGIN_ERROR:", msg);
+    return jsonWithCors(req, { error: "Internal server error", debug: msg }, { status: 500 });
   }
 }

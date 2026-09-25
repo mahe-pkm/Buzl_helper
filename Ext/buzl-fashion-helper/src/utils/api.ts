@@ -7,6 +7,9 @@ const stripApiSuffix = (value: string) => {
   return clean.toLowerCase().endsWith('/api') ? clean.slice(0, -4) : clean;
 };
 
+const VPS_API_URL = 'https://api-buzl.213.210.37.204.sslip.io/api';
+const LIVE_DASHBOARD_URL = 'https://buzl-admin-dashboard.vercel.app';
+
 export function getBaseUrl(): string {
   const state = useCsvStore.getState();
   let url =
@@ -18,6 +21,11 @@ export function getBaseUrl(): string {
 
   // Clean trailing slashes and whitespace
   url = trimTrailingSlash(url);
+
+  // Automatically upgrade dead legacy Supabase cloud Vercel backend to VPS
+  if (url.includes('buzl-helper.vercel.app')) {
+    url = VPS_API_URL;
+  }
 
   // Proactively append /api if the user omitted it
   if (url && !url.endsWith('/api')) {
@@ -43,7 +51,13 @@ export function getDashboardUrl(): string {
         ? state.hostingerUrl
         : state.customUrl;
 
-  const selectedUrl = configuredUrl.trim() || fallbackApiUrl;
+  let selectedUrl = configuredUrl.trim() || fallbackApiUrl;
+  
+  // Automatically upgrade legacy dead dashboard domain
+  if (selectedUrl.includes('buzl-dev.vercel.app') || selectedUrl.includes('buzl-helper.vercel.app')) {
+    selectedUrl = LIVE_DASHBOARD_URL;
+  }
+
   return stripApiSuffix(selectedUrl);
 }
 

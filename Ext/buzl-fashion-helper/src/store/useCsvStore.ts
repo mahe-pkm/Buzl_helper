@@ -84,12 +84,12 @@ export const useCsvStore = create<CsvState>()(
 
       // Defaults
       connectionMode: 'server',
-      serverEnvironment: 'custom',
-      vercelUrl: 'https://buzl-helper.vercel.app/api',
-      hostingerUrl: 'https://buzl-helper.vercel.app/api',
+      serverEnvironment: 'production',
+      vercelUrl: 'https://api-buzl.213.210.37.204.sslip.io/api',
+      hostingerUrl: 'https://api-buzl.213.210.37.204.sslip.io/api',
       customUrl: 'http://127.0.0.1:3000/api',
-      dashboardVercelUrl: 'https://buzl-dev.vercel.app',
-      dashboardHostingerUrl: 'https://buzl-dev.vercel.app',
+      dashboardVercelUrl: 'https://buzl-admin-dashboard.vercel.app',
+      dashboardHostingerUrl: 'https://buzl-admin-dashboard.vercel.app',
       dashboardCustomUrl: 'http://127.0.0.1:5174',
       token: null,
       userId: null,

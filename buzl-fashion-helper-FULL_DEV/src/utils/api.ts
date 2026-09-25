@@ -1,4 +1,11 @@
-export const API_URL = import.meta.env.VITE_API_URL || "/api";
+const LEGACY_API_URL = "https://buzl-helper.vercel.app/api";
+const VPS_API_URL = "https://api-buzl.213.210.37.204.sslip.io/api";
+
+const configuredApiUrl = import.meta.env.VITE_API_URL;
+
+export const API_URL = configuredApiUrl === LEGACY_API_URL
+  ? VPS_API_URL
+  : configuredApiUrl || "/api";
 
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
   const token = localStorage.getItem("buzl_token");

@@ -815,8 +815,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
         </div>
       )}
 
-      <div style={style} className="px-4 py-2">
-      <div className={`relative border rounded-xl p-4 transition-all ${cardClass}`}>
+      <div style={style} className="px-3 py-1.5">
+      <div className={`relative min-w-0 border rounded-xl p-3 transition-all ${cardClass}`}>
         {isCompleted && (
           <div className="pointer-events-none absolute -left-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-green-500 text-white shadow-md">
             <Check size={12} className="animate-pulse" />
@@ -831,14 +831,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
           <div className="pointer-events-none absolute -left-2 -top-2 h-5 w-5 rounded-full border-2 border-white bg-gray-300 shadow-sm" />
         )}
         <div>
-          <div className="mb-2 flex items-start gap-2">
+          <div className="mb-1.5 flex items-start gap-2">
             <button 
               onClick={handleToggleComplete}
               className={`mt-0.5 flex-shrink-0 transition-colors focus:outline-none ${
                 isCompleted ? 'text-green-600' : isInProgress ? 'text-[#e98300]' : 'text-gray-300 hover:text-green-500'
               }`}
             >
-              {isCompleted ? <CheckCircle2 size={24} className="text-green-600" /> : isInProgress ? <Clock size={24} className="text-[#e98300] animate-[spin_2s_linear_infinite]" /> : <Circle size={24} />}
+              {isCompleted ? <CheckCircle2 size={20} className="text-green-600" /> : isInProgress ? <Clock size={20} className="text-[#e98300] animate-[spin_2s_linear_infinite]" /> : <Circle size={20} />}
             </button>
 
             {thumbnailSrc && (
@@ -847,13 +847,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                 alt="Preview"
                 onLoad={(e) => persistThumbFromElement(e.currentTarget, 'main')}
                 onError={handleThumbnailError}
-                className="h-12 w-12 flex-shrink-0 rounded-lg object-cover border border-gray-200 bg-white"
+                className="h-10 w-10 flex-shrink-0 rounded-lg object-cover border border-gray-200 bg-white"
               />
             )}
 
             <div className="min-w-0 flex-1">
               <div className="flex justify-between items-start gap-2">
-                <h3 className={`font-semibold text-[13px] truncate ${isCompleted ? 'text-green-800' : isInProgress ? 'text-[#9a5200]' : 'text-gray-900'}`} title={product.product_name}>
+                <h3 className={`font-semibold text-[12px] truncate ${isCompleted ? 'text-green-800' : isInProgress ? 'text-[#9a5200]' : 'text-gray-900'}`} title={product.product_name}>
                   {product.product_name}
                 </h3>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -864,14 +864,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                   </span>
                   <button 
                     onClick={() => copyToClipboard(product.product_name, 'Product Name')}
-                    className={`p-1.5 rounded-md transition-colors border ${product.nameCopied ? 'text-green-600 bg-green-50 border-green-200' : 'text-gray-500 bg-white hover:bg-gray-50 border-gray-200'}`}
+                    className={`p-1 rounded-md transition-colors border ${product.nameCopied ? 'text-green-600 bg-green-50 border-green-200' : 'text-gray-500 bg-white hover:bg-gray-50 border-gray-200'}`}
                     title="Copy Name"
                   >
                     {product.nameCopied ? <Check size={14} /> : <Copy size={14} />}
                   </button>
                   <button
                     onClick={onToggleExpand}
-                    className="p-1.5 rounded-md transition-colors border border-gray-200 text-gray-500 bg-white hover:bg-gray-50"
+                    className="p-1 rounded-md transition-colors border border-gray-200 text-gray-500 bg-white hover:bg-gray-50"
                     title={expanded ? 'Collapse product details' : 'Expand product details'}
                   >
                     {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -883,7 +883,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
 
           <div className="min-w-0">
             {connectionMode === 'server' && (
-              <div className="mb-2 flex items-start justify-between gap-2 text-[11px]">
+              <div className="mb-1.5 flex items-start justify-between gap-2 text-[10px]">
                 <div className="flex min-w-0 flex-col gap-1">
                   <span className={`inline-flex items-center gap-1.5 ${
                   isUnassigned ? 'font-semibold text-amber-600' : isMine ? 'font-semibold text-green-700' : 'font-semibold text-blue-700'
@@ -913,7 +913,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                   <button
                     onClick={handleReleaseTask}
                     disabled={assigning}
-                    className="inline-flex items-center gap-1 rounded-md border border-red-100 bg-red-50 px-2 py-1 font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 rounded-md border border-red-100 bg-red-50 px-1.5 py-0.5 font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
                   >
                     <UserMinus size={11} /> Unassign
                   </button>
@@ -935,10 +935,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
 
             {expanded && (
               <>
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-xs bg-blue-50/50 p-2 rounded-lg border border-blue-100">
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between text-[11px] bg-blue-50/50 p-1.5 rounded-lg border border-blue-100">
                     <span className="font-medium text-blue-900 truncate pr-2">Drive Folder</span>
-                    <div className="flex gap-1.5 flex-shrink-0">
+                    <div className="flex gap-1 flex-shrink-0">
                       <button 
                         onClick={() => openLink(product.drive_folder, 'Drive')}
                         className={`p-1 rounded-md transition-colors ${product.driveOpened ? 'text-blue-700 bg-blue-100' : 'text-blue-600 hover:bg-blue-100'}`}
@@ -957,9 +957,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                   </div>
 
                   {finalReferenceUrl && (
-                    <div className="flex items-center justify-between text-xs bg-purple-50/50 p-2 rounded-lg border border-purple-100">
+                    <div className="flex items-center justify-between text-[11px] bg-purple-50/50 p-1.5 rounded-lg border border-purple-100">
                       <span className="font-medium text-purple-900 truncate pr-2">Reference URL</span>
-                      <div className="flex gap-1.5 flex-shrink-0">
+                       <div className="flex gap-1 flex-shrink-0">
                         <button 
                           onClick={() => openLink(finalReferenceUrl, 'Reference')}
                           className={`p-1 rounded-md transition-colors ${product.referenceOpened ? 'text-purple-700 bg-purple-100' : 'text-purple-600 hover:bg-purple-100'}`}
@@ -980,12 +980,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
 
                 </div>
 
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   {connectionMode === 'server' && isUnassigned && (
                     <button
                       onClick={handleClaimTask}
                       disabled={assigning}
-                      className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                      className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
                     >
                       {assigning ? 'Claiming...' : '+ Claim this task'}
                     </button>
@@ -993,7 +993,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                   <button
                     onClick={handleRegenerationAction}
                     disabled={loggingRegen || loggingAction !== null || resettingAction !== null || !canEditTimers}
-                    className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                    className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
                     title="Logs one Re-gen attempt (count) and adds to Full Re-gen image count"
                   >
                     <span className="inline-flex items-center gap-1">
@@ -1015,7 +1015,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                   ) : (
                     <button
                       onClick={() => setEditingRegenImageCount(true)}
-                      className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-[11px] font-bold text-teal-700 hover:bg-teal-100"
+                      className="rounded-lg border border-teal-200 bg-teal-50 px-2 py-1 text-[10px] font-bold text-teal-700 hover:bg-teal-100"
                       title="Manual Re-gen image count (separate from Re-gen attempts)"
                     >
                       Re-gen Img ({product.regen_image_count ?? 0})
@@ -1023,7 +1023,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                   )}
                   <button 
                     onClick={() => setShowNotes(!showNotes)}
-                    className={`ml-auto text-[11px] flex items-center gap-1 font-semibold transition-colors px-2 py-1 rounded-md ${product.notes ? 'text-amber-700 bg-amber-50 hover:bg-amber-100' : 'text-gray-500 bg-gray-50 hover:bg-gray-100'}`}
+                    className={`text-[10px] flex items-center gap-1 font-semibold transition-colors px-2 py-1 rounded-md ${product.notes ? 'text-amber-700 bg-amber-50 hover:bg-amber-100' : 'text-gray-500 bg-gray-50 hover:bg-gray-100'}`}
                   >
                     <MessageSquare size={12} /> {showNotes ? 'Close Notes' : (product.notes ? 'Edit Notes' : 'Add Note')}
                   </button>
@@ -1044,7 +1044,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                   </div>
                 </div>
 
-                <div className="mt-1.5 rounded-lg border border-gray-200 bg-gray-50 p-1.5">
+                <div className="mt-1.5 rounded-lg border border-gray-200 bg-gray-50 p-1">
                   <div className="grid grid-cols-5 gap-1">
                     {TIMER_STEPS.map((step, index) => {
                       const log = latestTimerLogs[step.action];
@@ -1067,13 +1067,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                             onClick={() => handleTimerAction(step.action)}
                             disabled={disabled}
                             title={tooltip}
-                            className={`min-h-[34px] min-w-0 w-full rounded-md border px-1 py-0.5 text-center transition-colors disabled:cursor-not-allowed ${
+                            className={`min-h-[30px] min-w-0 w-full rounded-md border px-1 py-0.5 text-center transition-colors disabled:cursor-not-allowed ${
                               isLogged
                                 ? 'border-green-200 bg-green-50 text-green-700'
                                 : 'border-gray-200 bg-white text-gray-600 hover:border-blue-200 hover:bg-blue-50'
                             } ${isLocked || !canEditTimers || ((loggingAction !== null || resettingAction !== null) && !isSaving && !isResetting) ? 'opacity-60' : ''}`}
                           >
-                            <span className="flex items-center justify-center gap-1 text-[8px] font-bold uppercase leading-none">
+                            <span className="flex items-center justify-center gap-0.5 text-[8px] font-bold uppercase leading-none">
                               {isLogged ? <Check size={10} /> : <Clock size={10} />}
                               <span className="truncate">{isSaving ? 'Save' : isResetting ? 'Reset' : step.shortLabel}</span>
                             </span>
@@ -1112,7 +1112,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, expanded, onT
                 <div className="mt-2 rounded-lg border border-gray-200 bg-white">
                   <button
                     onClick={() => setPostProcessingOpen((prev) => !prev)}
-                    className="flex w-full items-center justify-between px-2.5 py-2 text-left"
+                    className="flex w-full items-center justify-between px-2 py-1.5 text-left"
                   >
                     <span className="text-[11px] font-bold text-gray-700">Post Processing Stages</span>
                     {postProcessingOpen ? <ChevronUp size={13} className="text-gray-500" /> : <ChevronDown size={13} className="text-gray-500" />}

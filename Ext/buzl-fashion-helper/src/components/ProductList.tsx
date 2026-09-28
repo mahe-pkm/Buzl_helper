@@ -187,18 +187,18 @@ export const ProductList: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 w-full bg-gray-50 overflow-y-auto">
+    <div className="flex-1 w-full min-w-0 bg-gray-50 overflow-y-auto overflow-x-hidden">
       {activeView === 'mine' ? (
         <>
           {myProducts.length > 0 && (
-            <div className="px-4 py-2 bg-gray-100 border-y border-gray-200 text-[11px] font-bold uppercase text-gray-500 flex items-center justify-between gap-3">
+            <div className="px-3 py-1.5 bg-gray-100 border-y border-gray-200 text-[10px] font-bold uppercase text-gray-500 flex items-center justify-between gap-2">
               <span>My Assigned Tasks ({myProducts.length})</span>
-              <div className="flex items-center gap-1.5 normal-case">
+              <div className="flex items-center gap-1 normal-case">
                 <button
                   type="button"
                   onClick={() => expandProducts(myProductIds)}
                   disabled={!canExpandMine}
-                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Expand all
                 </button>
@@ -206,7 +206,7 @@ export const ProductList: React.FC = () => {
                   type="button"
                   onClick={() => collapseProducts(myProductIds)}
                   disabled={!canCollapseMine}
-                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Collapse all
                 </button>
@@ -222,7 +222,7 @@ export const ProductList: React.FC = () => {
             />
           ))}
           {unassignedProducts.length > 0 && (
-            <div className="px-4 py-2 bg-amber-50 border-y border-amber-100 text-[11px] font-bold uppercase text-amber-600">
+            <div className="px-3 py-1.5 bg-amber-50 border-y border-amber-100 text-[10px] font-bold uppercase text-amber-600">
               Unassigned - Available to Claim ({unassignedProducts.length})
             </div>
           )}

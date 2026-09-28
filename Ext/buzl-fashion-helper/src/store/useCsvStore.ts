@@ -14,16 +14,10 @@ interface CsvState {
   activeCategoryFilter: string;
   activeDateFilter: string;
   expandedProductIds: string[];
+  uiScale: number;
   
   // Connection and Server Settings
   connectionMode: 'local' | 'server';
-  serverEnvironment: 'development' | 'production' | 'custom';
-  vercelUrl: string;
-  hostingerUrl: string;
-  customUrl: string;
-  dashboardVercelUrl: string;
-  dashboardHostingerUrl: string;
-  dashboardCustomUrl: string;
   token: string | null;
   userId: string | null;
   username: string | null;
@@ -45,15 +39,9 @@ interface CsvState {
   expandProducts: (ids: string[]) => void;
   collapseProducts: (ids: string[]) => void;
   updateProduct: (id: string, updates: Partial<Product>) => void;
+  setUiScale: (scale: number) => void;
 
   setConnectionMode: (mode: 'local' | 'server') => void;
-  setServerEnvironment: (env: 'development' | 'production' | 'custom') => void;
-  setVercelUrl: (url: string) => void;
-  setHostingerUrl: (url: string) => void;
-  setCustomUrl: (url: string) => void;
-  setDashboardVercelUrl: (url: string) => void;
-  setDashboardHostingerUrl: (url: string) => void;
-  setDashboardCustomUrl: (url: string) => void;
   setCredentials: (username: string | null, token: string | null, userId?: string | null) => void;
 }
 
@@ -81,16 +69,9 @@ export const useCsvStore = create<CsvState>()(
       activeCategoryFilter: 'all',
       activeDateFilter: '',
       expandedProductIds: [],
+      uiScale: 90,
 
-      // Defaults
       connectionMode: 'server',
-      serverEnvironment: 'production',
-      vercelUrl: 'https://api-buzl.213.210.37.204.sslip.io/api',
-      hostingerUrl: 'https://api-buzl.213.210.37.204.sslip.io/api',
-      customUrl: 'http://127.0.0.1:3000/api',
-      dashboardVercelUrl: 'https://buzl-admin-dashboard.vercel.app',
-      dashboardHostingerUrl: 'https://buzl-admin-dashboard.vercel.app',
-      dashboardCustomUrl: 'http://127.0.0.1:5174',
       token: null,
       userId: null,
       username: null,
@@ -151,15 +132,9 @@ export const useCsvStore = create<CsvState>()(
       updateProduct: (id, updates) => set((state) => ({
         products: state.products.map((p) => (p.id === id ? { ...p, ...updates } : p))
       })),
+      setUiScale: (uiScale) => set({ uiScale: Math.min(110, Math.max(75, uiScale)) }),
 
       setConnectionMode: (connectionMode) => set({ connectionMode }),
-      setServerEnvironment: (serverEnvironment) => set({ serverEnvironment }),
-      setVercelUrl: (vercelUrl) => set({ vercelUrl }),
-      setHostingerUrl: (hostingerUrl) => set({ hostingerUrl }),
-      setCustomUrl: (customUrl) => set({ customUrl }),
-      setDashboardVercelUrl: (dashboardVercelUrl) => set({ dashboardVercelUrl }),
-      setDashboardHostingerUrl: (dashboardHostingerUrl) => set({ dashboardHostingerUrl }),
-      setDashboardCustomUrl: (dashboardCustomUrl) => set({ dashboardCustomUrl }),
       setCredentials: (username, token, userId = null) => set({ username, token, userId })
     }),
     {
@@ -179,14 +154,8 @@ export const useCsvStore = create<CsvState>()(
         activeCategoryFilter: state.activeCategoryFilter,
         activeDateFilter: state.activeDateFilter,
         expandedProductIds: state.expandedProductIds.slice(0, 100),
+        uiScale: state.uiScale,
         connectionMode: state.connectionMode,
-        serverEnvironment: state.serverEnvironment,
-        vercelUrl: state.vercelUrl,
-        hostingerUrl: state.hostingerUrl,
-        customUrl: state.customUrl,
-        dashboardVercelUrl: state.dashboardVercelUrl,
-        dashboardHostingerUrl: state.dashboardHostingerUrl,
-        dashboardCustomUrl: state.dashboardCustomUrl,
         token: state.token,
         userId: state.userId,
         username: state.username,

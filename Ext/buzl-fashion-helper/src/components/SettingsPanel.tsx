@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, Server, Wifi, WifiOff, X, KeyRound, Globe, User, LogOut, Check, Eye, EyeOff } from 'lucide-react';
 import { useCsvStore } from '../store/useCsvStore';
-import { fetchWithAuth } from '../utils/api';
+import { fetchWithAuth, LIVE_DASHBOARD_URL, PRODUCTION_API_URL } from '../utils/api';
 import { toast } from 'sonner';
 
 interface SettingsPanelProps {
@@ -13,20 +13,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
   const {
     connectionMode,
     setConnectionMode,
-    serverEnvironment,
-    setServerEnvironment,
-    vercelUrl,
-    setVercelUrl,
-    hostingerUrl,
-    setHostingerUrl,
-    customUrl,
-    setCustomUrl,
-    dashboardVercelUrl,
-    setDashboardVercelUrl,
-    dashboardHostingerUrl,
-    setDashboardHostingerUrl,
-    dashboardCustomUrl,
-    setDashboardCustomUrl,
     token,
     username,
     setCredentials,
@@ -69,7 +55,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
       }
     } catch (err: any) {
       toast.error('Login failed', {
-        description: err.message || 'Verify the API URL, username, and password in settings.',
+        description: err.message || 'Verify the production API connection, username, and password.',
       });
     } finally {
       setLoggingIn(false);
@@ -132,114 +118,34 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ onClose, onRefresh
 
           {connectionMode === 'server' && (
             <>
-              {/* Server Environment */}
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Select Server Environment</label>
-                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
-                  {(['production', 'development', 'custom'] as const).map((env) => (
-                    <button
-                      key={env}
-                      onClick={() => setServerEnvironment(env)}
-                      className={`py-2 px-1 rounded-lg text-xs font-bold border transition-all text-center capitalize ${
-                        serverEnvironment === env
-                          ? 'bg-gray-900 border-gray-900 text-white shadow-sm'
-                          : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      {env === 'production' ? 'Hostinger' : env === 'development' ? 'Vercel' : 'Localhost'}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setServerEnvironment('custom');
-                      setCustomUrl('http://127.0.0.1:3000/api');
-                      setDashboardCustomUrl('http://127.0.0.1:5174');
-                      toast.success('Switched to localhost endpoints');
-                    }}
-                    className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-100"
-                  >
-                    Use Localhost
-                  </button>
-                </div>
-              </div>
-
-              {/* Endpoint URLs */}
+              {/* Production endpoints */}
               <div className="flex flex-col gap-3.5 bg-gray-50/50 border border-gray-100 rounded-xl p-4">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase tracking-wide">
-                  <Globe size={13} /> Edit Host URLs
+                  <Globe size={13} /> Production Endpoint
                 </div>
-
-                {serverEnvironment === 'development' && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-semibold text-gray-400">Vercel (Development Mode) API URL</span>
-                      <input
-                        type="text"
-                        value={vercelUrl}
-                        onChange={(e) => setVercelUrl(e.target.value)}
-                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-semibold text-gray-400">Vercel Dashboard URL</span>
-                      <input
-                        type="text"
-                        value={dashboardVercelUrl}
-                        onChange={(e) => setDashboardVercelUrl(e.target.value)}
-                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {serverEnvironment === 'production' && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-semibold text-gray-400">Hostinger (Production Mode) API URL</span>
-                      <input
-                        type="text"
-                        value={hostingerUrl}
-                        onChange={(e) => setHostingerUrl(e.target.value)}
-                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-semibold text-gray-400">Hostinger Dashboard URL</span>
-                      <input
-                        type="text"
-                        value={dashboardHostingerUrl}
-                        onChange={(e) => setDashboardHostingerUrl(e.target.value)}
-                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {serverEnvironment === 'custom' && (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-semibold text-gray-400">Custom / Localhost API URL</span>
-                      <input
-                        type="text"
-                        value={customUrl}
-                        onChange={(e) => setCustomUrl(e.target.value)}
-                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-semibold text-gray-400">Custom / Localhost Dashboard URL</span>
-                      <input
-                        type="text"
-                        value={dashboardCustomUrl}
-                        onChange={(e) => setDashboardCustomUrl(e.target.value)}
-                        className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
-                      />
-                    </div>
-                  </div>
-                )}
+                <p className="text-[10px] leading-relaxed text-gray-500">
+                  URLs are locked for workers so sign-in always uses the live Hostinger API.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[10px] font-semibold text-gray-400">Hostinger API URL</span>
+                    <input
+                      type="text"
+                      value={PRODUCTION_API_URL}
+                      readOnly
+                      className="w-full cursor-default rounded-lg border border-gray-200 bg-white p-2.5 text-xs text-gray-700 outline-none"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[10px] font-semibold text-gray-400">Dashboard URL</span>
+                    <input
+                      type="text"
+                      value={LIVE_DASHBOARD_URL}
+                      readOnly
+                      className="w-full cursor-default rounded-lg border border-gray-200 bg-white p-2.5 text-xs text-gray-700 outline-none"
+                    />
+                  </label>
+                </div>
               </div>
 
               {/* Auth Credentials */}

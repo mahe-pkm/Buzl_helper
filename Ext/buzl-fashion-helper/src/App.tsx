@@ -94,7 +94,9 @@ function App() {
     setProducts, 
     connectionMode, 
     token, 
-    username 
+    username,
+    uiScale,
+    setUiScale,
   } = useCsvStore();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -213,8 +215,19 @@ function App() {
     }
   };
 
+  const scaleFactor = uiScale / 100;
+
   return (
-    <div className="mx-auto h-[100dvh] w-full max-w-[420px] bg-gray-50 overflow-hidden flex flex-col shadow-xl relative">
+    <div className="h-[100dvh] w-full overflow-hidden bg-gray-100">
+      <div
+        className="mx-auto h-[100dvh] w-full bg-gray-50 overflow-hidden flex flex-col shadow-xl relative"
+        style={{
+          transform: `scale(${scaleFactor})`,
+          transformOrigin: 'top left',
+          width: `${100 / scaleFactor}%`,
+          height: `${100 / scaleFactor}%`,
+        }}
+      >
       <Toaster
         position="top-center"
         closeButton
@@ -225,19 +238,32 @@ function App() {
         }}
       />
 
-      <header className="flex-shrink-0 bg-white border-b border-gray-200 p-4 z-20 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)] flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <img src="/logo-icon.png" alt="" className="h-9 w-9 rounded-lg shadow-sm" />
-          <h1 className="font-bold text-gray-900 tracking-tight text-lg">Buzl Helper</h1>
+      <header className="flex-shrink-0 bg-white border-b border-gray-200 px-3 py-2.5 z-20 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)] flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <img src="/logo-icon.png" alt="" className="h-8 w-8 flex-shrink-0 rounded-lg shadow-sm" />
+          <h1 className="min-w-0 truncate font-bold text-gray-900 tracking-tight text-base">Buzl Helper</h1>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-shrink-0 items-center gap-1">
+          <label className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-1.5 py-1 text-[10px] font-bold text-gray-600">
+            <span className="max-[390px]:hidden">Scale</span>
+            <select
+              value={uiScale}
+              onChange={(event) => setUiScale(Number(event.target.value))}
+              className="bg-transparent text-[10px] font-bold text-gray-700 outline-none"
+              title="Custom side panel scale"
+            >
+              {[80, 85, 90, 95, 100, 105].map((scale) => (
+                <option key={scale} value={scale}>{scale}%</option>
+              ))}
+            </select>
+          </label>
           <button
             onClick={handleOpenDashboard}
             className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700 transition-colors hover:bg-gray-50"
             title="Open Dashboard Login"
           >
             <LogIn size={12} />
-            <span>Dashboard</span>
+            <span className="max-[430px]:hidden">Dashboard</span>
           </button>
           {connectionMode === 'server' && token && (
             <button 
@@ -257,7 +283,7 @@ function App() {
             <Settings size={16} />
           </button>
           {isSessionActive && (
-            <span className="bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm">
+            <span className="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-1 rounded-full text-[11px] font-semibold shadow-sm">
               {products.length} Tasks
             </span>
           )}
@@ -304,6 +330,7 @@ function App() {
           onRefreshTasks={handleRefreshTasks} 
         />
       )}
+      </div>
     </div>
   );
 }

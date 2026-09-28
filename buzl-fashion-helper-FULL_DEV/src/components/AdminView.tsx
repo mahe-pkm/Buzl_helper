@@ -13,7 +13,7 @@ type Tab = 'products' | 'users';
 type CategoryItem = { id: string; name: string };
 const LAST_DRIVE_LINK_KEY = 'buzl_last_drive_link';
 const LAST_REFERENCE_LINK_KEY = 'buzl_last_reference_link';
-const EXTENSION_ZIP_URL = `/buzl-fashion-helper.zip?v=${encodeURIComponent(import.meta.env.VITE_APP_BUILD_ID || '1437c53')}`;
+const EXTENSION_ZIP_URL = `/buzl-fashion-helper.zip?v=${encodeURIComponent(import.meta.env.VITE_APP_BUILD_ID || '20260928-v1.0.1')}`;
 
 const ThumbnailImage: React.FC<{ thumbnailUrl?: string | null; driveLink?: string | null; className: string; alt?: string }> = ({
   thumbnailUrl,

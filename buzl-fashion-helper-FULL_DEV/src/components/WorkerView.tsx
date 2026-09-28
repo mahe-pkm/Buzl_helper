@@ -10,7 +10,7 @@ import { getProductPhase } from '../utils/productPhase';
 import { getCachedThumb, setCachedThumb } from '../utils/thumbnailCache';
 
 type WorkerTab = 'mine' | 'all';
-const EXTENSION_ZIP_URL = `/buzl-fashion-helper.zip?v=${encodeURIComponent(import.meta.env.VITE_APP_BUILD_ID || '1437c53')}`;
+const EXTENSION_ZIP_URL = `/buzl-fashion-helper.zip?v=${encodeURIComponent(import.meta.env.VITE_APP_BUILD_ID || '20260928-v1.0.1')}`;
 
 export const WorkerView: React.FC = () => {
   const { authUser, logout, products, setProducts, searchQuery, setSearchQuery } = useCsvStore();

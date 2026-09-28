@@ -234,10 +234,10 @@ export const Dashboard: React.FC = () => {
   }, [activeUnassignedOnly, activeWorkerFilter, setActiveUnassignedOnly]);
 
   return (
-    <div className="bg-white border-b border-gray-200 p-3 flex flex-col gap-3 shadow-sm z-10 relative">
+    <div className="bg-white border-b border-gray-200 p-2 flex flex-col gap-2 shadow-sm z-10 relative">
       <div className="flex flex-wrap justify-between items-end gap-1.5">
         <div className="flex flex-col gap-1">
-          <span className="text-2xl font-bold text-gray-900 leading-none">{progress}%</span>
+          <span className="text-xl font-bold text-gray-900 leading-none">{progress}%</span>
           <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{activeView === 'mine' ? 'My Progress' : 'All Progress'}</span>
         </div>
         <div className="grid grid-cols-3 gap-2 text-right sm:flex sm:gap-3">
@@ -256,17 +256,17 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+      <div className="w-full bg-gray-100 h-1 rounded-full overflow-hidden">
         <div 
           className="bg-green-500 h-full transition-all duration-500 ease-out"
           style={{ width: `${progress}%` }}
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-1.5">
         <button
           onClick={() => setActiveView('mine')}
-          className={`py-1.5 rounded-lg text-[11px] font-bold border transition-colors ${
+          className={`py-1 rounded-lg text-[11px] font-bold border transition-colors ${
             activeView === 'mine' ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-200 text-gray-600'
           }`}
         >
@@ -275,7 +275,7 @@ export const Dashboard: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveView('all')}
-          className={`py-1.5 rounded-lg text-[11px] font-bold border transition-colors ${
+          className={`py-1 rounded-lg text-[11px] font-bold border transition-colors ${
             activeView === 'all' ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-200 text-gray-600'
           }`}
         >
@@ -297,7 +297,7 @@ export const Dashboard: React.FC = () => {
           }}
           onFocus={() => setShowSuggestions(true)}
           onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
-          className="w-full pl-8 pr-3 py-1.5 text-[13px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-gray-50"
+          className="w-full pl-8 pr-3 py-1.5 text-[12px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-gray-50"
         />
         {showSuggestions && searchSuggestions.length > 0 && (
           <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
@@ -334,7 +334,7 @@ export const Dashboard: React.FC = () => {
           <select
             value={activeWorkerFilter}
             onChange={(e) => setActiveWorkerFilter(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 bg-gray-50 py-1.5 pl-7 pr-2 text-[11px] font-semibold text-gray-700 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-500"
+            className="w-full min-w-0 rounded-lg border border-gray-300 bg-gray-50 py-1.5 pl-7 pr-1 text-[10px] font-semibold text-gray-700 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Members</option>
             <option value="claimed">Claimed only</option>
@@ -355,7 +355,7 @@ export const Dashboard: React.FC = () => {
             type="date"
             value={activeDateFilter}
             onChange={(e) => setActiveDateFilter(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 bg-gray-50 py-1.5 pl-7 pr-2 text-[11px] font-semibold text-gray-700 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-500"
+            className="w-full min-w-0 rounded-lg border border-gray-300 bg-gray-50 py-1.5 pl-7 pr-1 text-[10px] font-semibold text-gray-700 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-500"
           />
         </label>
 
@@ -363,7 +363,7 @@ export const Dashboard: React.FC = () => {
           <select
             value={activeCategoryFilter}
             onChange={(e) => setActiveCategoryFilter(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 bg-gray-50 py-1.5 px-2 text-[11px] font-semibold text-gray-700 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-500"
+            className="w-full min-w-0 rounded-lg border border-gray-300 bg-gray-50 py-1.5 px-2 text-[10px] font-semibold text-gray-700 outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All categories</option>
             {categoryOptions.map((category) => (
